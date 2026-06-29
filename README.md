@@ -1,96 +1,110 @@
-# 🚀 SCRIPT AUTO INSTALL SSH & XRAY MULTIPORT
 
-**Base Script by:** eddyme23  
-**Modified by:** Fahri Alimudin
 
----
+🚀 AUTO INSTALL SCRIPT SSH & XRAY MULTIPORT
 
-## 📢 PERHATIAN
-Mohon baca sampai selesai sebelum melakukan instalasi!
+Base Script by: eddyme23
+Modified by: marc
 
 ---
 
-## 💻 OS SUPPORT & SPESIFIKASI
+📢 NOTICE
+
+Please read thoroughly before starting the installation!
+
+---
+
+💻 OS SUPPORT & SPECIFICATIONS
 
 <p align="center">
+
+  <img src="https://companieslogo.com/img/orig/debian_BIG-7a652e6a.png?t=1720244494" alt="Debian Logo" width="180"/> 
   <img src="https://assets.ubuntu.com/v1/29985a98-ubuntu-logo32.png" alt="Ubuntu Logo" width="180"/>
   <br/>
   <img src="https://img.shields.io/badge/Ubuntu-22.04%20LTS-E95420?style=for-the-badge&logo=ubuntu&logoColor=white"/>
   <img src="https://img.shields.io/badge/Ubuntu-24.04%20LTS-E95420?style=for-the-badge&logo=ubuntu&logoColor=white"/>
+  <br/>
+  <img src="https://img.shields.io/badge/Debian-11%20Bullseye-A81D33?style=for-the-badge&logo=debian&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Debian-12%20Bookworm-A81D33?style=for-the-badge&logo=debian&logoColor=white"/>
 </p>
 
-⚡ **CPU:** Minimal 1 Core  
-🧠 **RAM:** Minimal 1GB  
-🌐 **Domain:** Wajib Pointing ke IP VPS  
+⚡ CPU: Minimum 1 Core
+🧠 RAM: Minimum 1GB
+🌐 Domain: Must Point to VPS IP
 
-### SETTING DOMAIN DI CLOUDFLARE
-- SSL/TLS : **FULL**
-- SSL/TLS Recommender : **OFF**
-- GRPC : **ON**
-- WEBSOCKET : **ON**
-- Always Use HTTPS : **OFF**
-- UNDER ATTACK MODE : **OFF**
+CLOUDFLARE DOMAIN SETTINGS
 
----
-
-## 📊 DAFTAR SERVICE & PORT LENGKAP
-
-| Nama Service           | Port / Protokol                  |
-|------------------------|----------------------------------|
-| 🔑 OpenSSH             | 22, 9696                         |
-| 🛡️ Dropbear           | 109, 143                         |
-| 🔒 Stunnel4 (SSL)      | 222, 777                         |
-| 🌐 SSH WS (HTTP)       | 80                               |
-| 🔐 SSH WSS (HTTPS)     | 443                              |
-| 🚀 Xray Vmess WS       | 80 (None TLS) / 443 (TLS)        |
-| 🚀 Xray Vless WS       | 80 (None TLS) / 443 (TLS)        |
-| 🚀 Xray Trojan WS      | 80 (None TLS) / 443 (TLS)        |
-| 🚀 Xray Shadowsocks WS | 80 (None TLS) / 443 (TLS)        |
-| 🧬 Xray Vmess gRPC     | 443                              |
-| 🧬 Xray Vless gRPC     | 443                              |
-| 🧬 Xray Trojan gRPC    | 443                              |
-| 🧬 Xray Shadowsocks gRPC | 443                            |
-| ⚙️ Nginx              | 81                               |
-| 🎮 Badvpn UDPGW        | 7100 - 7400                      |
+· SSL/TLS : FULL
+· SSL/TLS Recommender : OFF
+· GRPC : ON
+· WEBSOCKET : ON
+· Always Use HTTPS : OFF
+· UNDER ATTACK MODE : OFF
 
 ---
 
-## 🛠️ CARA INSTALLASI (BASH SCRIPT)
+📊 COMPLETE SERVICE & PORT LIST
 
-Login ke VPS Anda sebagai **root** (`sudo su`), lalu salin dan jalankan kode berikut:
+Service Name Port / Protocol
+🔑 OpenSSH 22, 9696
+🛡️ Dropbear 109, 143
+🔒 Stunnel4 (SSL) 222, 777
+🌐 SSH WS (HTTP) 80
+🔐 SSH WSS (HTTPS) 443
+🚀 Xray Vmess WS 80 (None TLS) / 443 (TLS)
+🚀 Xray Vless WS 80 (None TLS) / 443 (TLS)
+🚀 Xray Trojan WS 80 (None TLS) / 443 (TLS)
+🚀 Xray Shadowsocks WS 80 (None TLS) / 443 (TLS)
+🧬 Xray Vmess gRPC 443
+🧬 Xray Vless gRPC 443
+🧬 Xray Trojan gRPC 443
+🧬 Xray Shadowsocks gRPC 443
+⚙️ Nginx 81
+🎮 Badvpn UDPGW 7100 - 7400
+
+---
+
+🛠️ INSTALLATION (BASH SCRIPT)
+
+Login to your VPS as root (sudo su), then copy and run the following command:
 
 ```bash
-sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sysctl -w net.ipv6.conf.default.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl unzip && wget https://raw.githubusercontent.com/fahrialimudin/xray/main/setup.sh && chmod +x setup.sh && sed -i -e 's/\r$//' setup.sh && screen -S setup ./setup.sh
+sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sysctl -w net.ipv6.conf.default.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl unzip && wget https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/setup.sh && chmod +x setup.sh && sed -i -e 's/\r$//' setup.sh && screen -S setup ./setup.sh
 ```
 
-> ✅ Kode di atas bisa langsung di-copy dengan mengklik ikon salin di pojok kanan blok kode.
+✅ You can copy the code above by clicking the copy icon in the top-right corner of the code block.
 
 ---
 
-## ✨ FITUR UTAMA
+✨ MAIN FEATURES
 
-- 💨 Speedtest VPS by Ookla  
-- 🔄 Auto Reboot & Restart All Service  
-- 🧹 Auto Delete Expired User  
-- 📊 Monitoring Bandwidth & Service  
-- 🚀 BBRPLUS v1.4.0 (Optimasi Speed)  
-- 🌐 DNS Changer  
-
----
-
-## 📞 KONTAK & BANTUAN
-
-Jika ada pertanyaan atau butuh bantuan, hubungi saya di:
-
-- 🟢 **WhatsApp:** [https://wa.me/6282328013583](https://wa.me/6282328013583)
-- 🔵 **Telegram:** [@fahrialimudin](https://t.me/fahrialimudin)
+· 💨 VPS Speedtest by Ookla
+· 🔄 Auto Reboot & Restart All Services
+· 🧹 Auto Delete Expired Users
+· 📊 Bandwidth & Service Monitoring
+· 🚀 BBRPLUS v1.4.0 (Speed Optimization)
+· 🌐 DNS Changer
 
 ---
 
-## 🙏 PENUTUP & KREDIT
+🔧 COMPATIBILITY UPDATE
 
-Terima kasih banyak kepada **eddyme23** atas script dasarnya yang luar biasa sehingga saya bisa melakukan modifikasi ini.
+✅ Now supports:
 
-Gunakan script ini dengan bijak. Dilarang keras untuk diperjualbelikan karena script ini didapatkan secara gratis.
+· Ubuntu 22.04 LTS
+· Ubuntu 24.04 LTS
+· Debian 11 (Bullseye)
+· Debian 12 (Bookworm)
 
-> © 2026 Fahri Alimudin - MyXray Project
+---
+
+📝 CHANGELOG
+
+Date Update
+2026-06-29 Added Debian 11 & 12 support
+2026-06-29 Philippines timezone (Asia/Manila)
+2026-06-29 Full English translation
+2026-06-29 Improved SSL certificate handling for Debian
+
+---
+
+© 2026 Marc - MARCSCRIPT
