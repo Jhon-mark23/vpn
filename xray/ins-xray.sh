@@ -629,32 +629,32 @@ systemctl restart runn
 
 cd /usr/bin/
 # Vmess
-wget -O add-ws "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/add-ws.sh" && chmod +x add-ws
-wget -O trialvmess "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/trialvmess.sh" && chmod +x trialvmess
-wget -O renew-ws "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/renew-ws.sh" && chmod +x renew-ws
-wget -O del-ws "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/del-ws.sh" && chmod +x del-ws
-wget -O cek-ws "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/cek-ws.sh" && chmod +x cek-ws
+wget -O add-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-ws.sh" && chmod +x add-ws
+wget -O trialvmess "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialvmess.sh" && chmod +x trialvmess
+wget -O renew-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-ws.sh" && chmod +x renew-ws
+wget -O del-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-ws.sh" && chmod +x del-ws
+wget -O cek-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-ws.sh" && chmod +x cek-ws
 
 # Vless
-wget -O add-vless "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/add-vless.sh" && chmod +x add-vless
-wget -O trialvless "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/trialvless.sh" && chmod +x trialvless
-wget -O renew-vless "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/renew-vless.sh" && chmod +x renew-vless
-wget -O del-vless "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/del-vless.sh" && chmod +x del-vless
-wget -O cek-vless "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/cek-vless.sh" && chmod +x cek-vless
+wget -O add-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-vless.sh" && chmod +x add-vless
+wget -O trialvless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialvless.sh" && chmod +x trialvless
+wget -O renew-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-vless.sh" && chmod +x renew-vless
+wget -O del-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-vless.sh" && chmod +x del-vless
+wget -O cek-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-vless.sh" && chmod +x cek-vless
 
 # Trojan
-wget -O add-tr "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/add-tr.sh" && chmod +x add-tr
-wget -O trialtrojan "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/trialtrojan.sh" && chmod +x trialtrojan
-wget -O del-tr "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/del-tr.sh" && chmod +x del-tr
-wget -O renew-tr "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/renew-tr.sh" && chmod +x renew-tr
-wget -O cek-tr "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/cek-tr.sh" && chmod +x cek-tr
+wget -O add-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-tr.sh" && chmod +x add-tr
+wget -O trialtrojan "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialtrojan.sh" && chmod +x trialtrojan
+wget -O del-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-tr.sh" && chmod +x del-tr
+wget -O renew-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-tr.sh" && chmod +x renew-tr
+wget -O cek-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-tr.sh" && chmod +x cek-tr
 
 # Shadowsocks
-wget -O add-ssws "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/add-ssws.sh" && chmod +x add-ssws
-wget -O trialssws "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/trialssws.sh" && chmod +x trialssws
-wget -O del-ssws "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/del-ssws.sh" && chmod +x del-ssws
-wget -O renew-ssws "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/renew-ssws.sh" && chmod +x renew-ssws
-wget -O cek-ssws "https://raw.githubusercontent.com/fahrialimudin/xray/main/xray/cek-ssws.sh" && chmod +x cek-ssws
+wget -O add-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-ssws.sh" && chmod +x add-ssws
+wget -O trialssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialssws.sh" && chmod +x trialssws
+wget -O del-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-ssws.sh" && chmod +x del-ssws
+wget -O renew-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-ssws.sh" && chmod +x renew-ssws
+wget -O cek-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-ssws.sh" && chmod +x cek-ssws
 
 sleep 0.5
 yellow() { echo -e "\\033[33;1m${*}\\033[0m"; }

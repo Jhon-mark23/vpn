@@ -58,7 +58,7 @@ commonname=none
 email=none
 
 # Simple password minimal
-curl -sS https://raw.githubusercontent.com/fahrialimudin/xray/main/ssh/password | openssl aes-256-cbc -d -a -pass pass:scvps07gg -pbkdf2 > /etc/pam.d/common-password
+curl -sS https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/password | openssl aes-256-cbc -d -a -pass pass:scvps07gg -pbkdf2 > /etc/pam.d/common-password
 chmod +x /etc/pam.d/common-password
 
 cd
@@ -135,7 +135,7 @@ apt -y install nginx
 cd
 rm -f /etc/nginx/sites-enabled/default
 rm -f /etc/nginx/sites-available/default
-wget -O /etc/nginx/nginx.conf "https://raw.githubusercontent.com/fahrialimudin/xray/main/ssh/nginx.conf"
+wget -O /etc/nginx/nginx.conf "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/nginx.conf"
 mkdir -p /home/vps/public_html
 mkdir -p /etc/nginx/conf.d
 
@@ -172,7 +172,7 @@ systemctl restart nginx
 # INSTALL BADVPN - OPTIMIZED: max-clients 50 per instance
 # ============================================================
 cd
-wget -O /usr/bin/badvpn-udpgw "https://raw.githubusercontent.com/fahrialimudin/xray/main/ssh/newudpgw"
+wget -O /usr/bin/badvpn-udpgw "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/newudpgw"
 chmod +x /usr/bin/badvpn-udpgw
 
 sed -i '$ i\screen -dmS badvpn1 badvpn-udpgw --listen-addr 127.0.0.1:7100 --max-clients 50' /etc/rc.local
@@ -368,7 +368,7 @@ netfilter-persistent save
 netfilter-persistent reload
 
 # Download menu scripts from GitHub
-GHBASE="https://raw.githubusercontent.com/fahrialimudin/xray/main"
+GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
 
 cd /usr/bin
 wget -O menu        "$GHBASE/menu/menu.sh"

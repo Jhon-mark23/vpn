@@ -29,8 +29,8 @@ if [[ "$OS" == "debian" ]]; then
 fi
 
 # Install ws-dropbear dan ws-stunnel dari repo (binary python)
-wget -O /usr/local/bin/ws-dropbear https://raw.githubusercontent.com/fahrialimudin/xray/main/sshws/ws-dropbear
-wget -O /usr/local/bin/ws-stunnel https://raw.githubusercontent.com/fahrialimudin/xray/main/sshws/ws-stunnel
+wget -O /usr/local/bin/ws-dropbear https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/sshws/ws-dropbear
+wget -O /usr/local/bin/ws-stunnel https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/sshws/ws-stunnel
 
 chmod +x /usr/local/bin/ws-dropbear
 chmod +x /usr/local/bin/ws-stunnel
