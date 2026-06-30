@@ -21,7 +21,7 @@ JSON_FILE="/etc/marcscript-vpn-config.json"
 INSTALL_ID=$(date +%Y%m%d_%H%M%S)
 API_PORT=3021
 
-# Xray compatible ports
+# Xray compatible port lists
 SSH_DIRECT_PORTS="22, 2222"
 SSH_SSL_PORTS="8443, 8444"
 SSH_WS_PORTS="8080, 8082"
@@ -103,6 +103,42 @@ init_json() {
     "warnings": []
 }
 EOF
+}
+
+update_json() {
+    local path="$1"
+    local value="$2"
+    if ! command -v jq &>/dev/null; then
+        log_warn "jq not installed, JSON update skipped for $path"
+        return 1
+    fi
+    if [[ "$value" =~ ^[0-9]+$ ]] || [[ "$value" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        jq --argjson val "$value" ".$path = \$val" "$JSON_FILE" > "$JSON_FILE.tmp" && mv "$JSON_FILE.tmp" "$JSON_FILE"
+    elif [[ "$value" =~ ^(true|false)$ ]]; then
+        jq --argjson val "$value" ".$path = \$val" "$JSON_FILE" > "$JSON_FILE.tmp" && mv "$JSON_FILE.tmp" "$JSON_FILE"
+    elif [[ "$value" =~ ^\[.*\]$ ]]; then
+        jq --argjson val "$value" ".$path = \$val" "$JSON_FILE" > "$JSON_FILE.tmp" && mv "$JSON_FILE.tmp" "$JSON_FILE"
+    else
+        jq --arg val "$value" ".$path = \$val" "$JSON_FILE" > "$JSON_FILE.tmp" && mv "$JSON_FILE.tmp" "$JSON_FILE"
+    fi
+}
+
+add_error_to_json() {
+    local error_msg="$1"
+    local error_time=$(date -Iseconds)
+    if command -v jq &>/dev/null; then
+        jq --arg msg "$error_msg" --arg time "$error_time" \
+           '.errors += [{"time": $time, "message": $msg}]' "$JSON_FILE" > "$JSON_FILE.tmp" && mv "$JSON_FILE.tmp" "$JSON_FILE"
+    fi
+}
+
+add_warning_to_json() {
+    local warn_msg="$1"
+    local warn_time=$(date -Iseconds)
+    if command -v jq &>/dev/null; then
+        jq --arg msg "$warn_msg" --arg time "$warn_time" \
+           '.warnings += [{"time": $time, "message": $msg}]' "$JSON_FILE" > "$JSON_FILE.tmp" && mv "$JSON_FILE.tmp" "$JSON_FILE"
+    fi
 }
 
 # ------------------------------------------------------------
@@ -198,11 +234,29 @@ rollback_on_error() {
 }
 
 # ------------------------------------------------------------
+# System info
+# ------------------------------------------------------------
+get_system_info() {
+    log_info "Gathering system information..."
+    ARCH=$(uname -m)
+    OS=$(lsb_release -d 2>/dev/null | cut -f2 || echo "Unknown")
+    KERNEL=$(uname -r)
+    VPS_IP=$(curl -s ifconfig.me || echo "unknown")
+    update_json "system.architecture" "$ARCH"
+    update_json "system.os" "$OS"
+    update_json "system.kernel" "$KERNEL"
+    update_json "installation.vps_ip" "$VPS_IP"
+    log_info "System: $OS, Arch: $ARCH, IP: $VPS_IP"
+}
+
+# ------------------------------------------------------------
 # Package installation
 # ------------------------------------------------------------
 install_packages() {
     log_info "Installing required packages..."
-    apt update -y >> "$LOG_FILE" 2>&1 || true
+    apt update -y >> "$LOG_FILE" 2>&1 || {
+        log_warn "Package update failed, continuing anyway..."
+    }
 
     PACKAGES="openssh-server stunnel4 curl wget lsof squid ufw openssl net-tools jq python3 python3-pip"
     for pkg in $PACKAGES; do
@@ -242,6 +296,9 @@ configure_ssh() {
     if ! grep -q "^Port 2222" /etc/ssh/sshd_config; then
         echo "Port 2222" >> /etc/ssh/sshd_config
     fi
+
+    # Remove port 80 if present (Xray uses 80)
+    sed -i '/^Port 80/d' /etc/ssh/sshd_config
 
     # Enable password auth & root login
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
@@ -854,6 +911,8 @@ EOF
 main() {
     init_json
     safety_check
+    get_system_info
+
     install_packages
     configure_ssh
     configure_stunnel
