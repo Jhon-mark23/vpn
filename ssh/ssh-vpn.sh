@@ -2,7 +2,7 @@
 # ==================================================
 # SSH-VPN Install Script - XRAY COMPATIBLE
 # Optimized for 1GB RAM / 1 CPU VPS
-# Supports: SSH Direct, SSH+SSL, SSH+WS
+# Supports: SSH Direct, SSH+SSL, SSH+WS, SSH+WSS
 # Compatible with Xray (port 80/443 shared via Nginx)
 # ==================================================
 
@@ -56,7 +56,6 @@ setup_environment() {
         sed -i "s/#\$nrconf{kernelhints} = -1;/\$nrconf{kernelhints} = -1;/" /etc/needrestart/needrestart.conf 2>/dev/null || true
     fi
 
-    # Set timezone
     ln -fs /usr/share/zoneinfo/Asia/Manila /etc/localtime
     timedatectl set-timezone Asia/Manila 2>/dev/null || true
 }
@@ -483,56 +482,103 @@ block_torrent() {
 }
 
 # ============================================================
-# DOWNLOAD MENU SCRIPTS
+# DOWNLOAD ALL MENU AND SSH SCRIPTS
 # ============================================================
 download_scripts() {
-    print_info "Downloading management scripts..."
-
+    print_info "Downloading all menu and management scripts..."
+    
     GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
-    cd /usr/bin
+    cd /usr/bin || cd /usr/local/bin
 
-    scripts=(
-        "menu:$GHBASE/menu/menu.sh"
-        "m-vmess:$GHBASE/menu/m-vmess.sh"
-        "m-vless:$GHBASE/menu/m-vless.sh"
-        "running:$GHBASE/menu/running.sh"
-        "clearcache:$GHBASE/menu/clearcache.sh"
-        "m-ssws:$GHBASE/menu/m-ssws.sh"
-        "m-trojan:$GHBASE/menu/m-trojan.sh"
-        "m-sshovpn:$GHBASE/menu/m-sshovpn.sh"
-        "usernew:$GHBASE/ssh/usernew.sh"
-        "trial:$GHBASE/ssh/trial.sh"
-        "renew:$GHBASE/ssh/renew.sh"
-        "hapus:$GHBASE/ssh/hapus.sh"
-        "cek:$GHBASE/ssh/cek.sh"
-        "member:$GHBASE/ssh/member.sh"
-        "delete:$GHBASE/ssh/delete.sh"
-        "autokill:$GHBASE/ssh/autokill.sh"
-        "ceklim:$GHBASE/ssh/ceklim.sh"
-        "tendang:$GHBASE/ssh/tendang.sh"
-        "sshws:$GHBASE/ssh/sshws.sh"
-        "m-system:$GHBASE/menu/m-system.sh"
-        "m-domain:$GHBASE/menu/m-domain.sh"
-        "add-host:$GHBASE/ssh/add-host.sh"
-        "certv2ray:$GHBASE/xray/certv2ray.sh"
-        "speedtest:$GHBASE/ssh/speedtest_cli.py"
-        "auto-reboot:$GHBASE/menu/auto-reboot.sh"
-        "restart:$GHBASE/menu/restart.sh"
-        "bw:$GHBASE/menu/bw.sh"
-        "m-tcp:$GHBASE/menu/tcp.sh"
-        "xp:$GHBASE/ssh/xp.sh"
-        "m-dns:$GHBASE/menu/m-dns.sh"
-        "fix-cek:$GHBASE/ssh/fix-cek.sh"
-    )
+    # ============================================================
+    # MENU SCRIPTS (from menu/ folder)
+    # ============================================================
+    print_info "Downloading menu scripts..."
+    
+    wget -q -O menu "$GHBASE/menu/menu.sh" && chmod +x menu
+    wget -q -O m-sshovpn "$GHBASE/menu/m-sshovpn.sh" && chmod +x m-sshovpn
+    wget -q -O m-vmess "$GHBASE/menu/m-vmess.sh" && chmod +x m-vmess
+    wget -q -O m-vless "$GHBASE/menu/m-vless.sh" && chmod +x m-vless
+    wget -q -O m-trojan "$GHBASE/menu/m-trojan.sh" && chmod +x m-trojan
+    wget -q -O m-ssws "$GHBASE/menu/m-ssws.sh" && chmod +x m-ssws
+    wget -q -O m-system "$GHBASE/menu/m-system.sh" && chmod +x m-system
+    wget -q -O m-domain "$GHBASE/menu/m-domain.sh" && chmod +x m-domain
+    wget -q -O m-dns "$GHBASE/menu/m-dns.sh" && chmod +x m-dns
+    wget -q -O m-tcp "$GHBASE/menu/tcp.sh" && chmod +x m-tcp
+    wget -q -O running "$GHBASE/menu/running.sh" && chmod +x running
+    wget -q -O clearcache "$GHBASE/menu/clearcache.sh" && chmod +x clearcache
+    wget -q -O auto-reboot "$GHBASE/menu/auto-reboot.sh" && chmod +x auto-reboot
+    wget -q -O restart "$GHBASE/menu/restart.sh" && chmod +x restart
+    wget -q -O bw "$GHBASE/menu/bw.sh" && chmod +x bw
 
-    for item in "${scripts[@]}"; do
-        name="${item%%:*}"
-        url="${item##*:}"
-        wget -q -O "$name" "$url" 2>/dev/null && chmod +x "$name"
-    done
+    # ============================================================
+    # SSH MANAGEMENT SCRIPTS (from ssh/ folder)
+    # ============================================================
+    print_info "Downloading SSH management scripts..."
+    
+    wget -q -O usernew "$GHBASE/ssh/usernew.sh" && chmod +x usernew
+    wget -q -O trial "$GHBASE/ssh/trial.sh" && chmod +x trial
+    wget -q -O renew "$GHBASE/ssh/renew.sh" && chmod +x renew
+    wget -q -O hapus "$GHBASE/ssh/hapus.sh" && chmod +x hapus
+    wget -q -O cek "$GHBASE/ssh/cek.sh" && chmod +x cek
+    wget -q -O member "$GHBASE/ssh/member.sh" && chmod +x member
+    wget -q -O delete "$GHBASE/ssh/delete.sh" && chmod +x delete
+    wget -q -O autokill "$GHBASE/ssh/autokill.sh" && chmod +x autokill
+    wget -q -O ceklim "$GHBASE/ssh/ceklim.sh" && chmod +x ceklim
+    wget -q -O tendang "$GHBASE/ssh/tendang.sh" && chmod +x tendang
+    wget -q -O sshws "$GHBASE/ssh/sshws.sh" && chmod +x sshws
+    wget -q -O add-host "$GHBASE/ssh/add-host.sh" && chmod +x add-host
+    wget -q -O xp "$GHBASE/ssh/xp.sh" && chmod +x xp
+    wget -q -O fix-cek "$GHBASE/ssh/fix-cek.sh" && chmod +x fix-cek
+    wget -q -O speedtest "$GHBASE/ssh/speedtest_cli.py" && chmod +x speedtest
+
+    # ============================================================
+    # XRAY MANAGEMENT SCRIPTS (from xray/ folder)
+    # ============================================================
+    print_info "Downloading Xray management scripts..."
+    
+    wget -q -O add-ws "$GHBASE/xray/add-ws.sh" && chmod +x add-ws
+    wget -q -O add-vless "$GHBASE/xray/add-vless.sh" && chmod +x add-vless
+    wget -q -O add-tr "$GHBASE/xray/add-tr.sh" && chmod +x add-tr
+    wget -q -O add-ssws "$GHBASE/xray/add-ssws.sh" && chmod +x add-ssws
+    wget -q -O del-ws "$GHBASE/xray/del-ws.sh" && chmod +x del-ws
+    wget -q -O del-vless "$GHBASE/xray/del-vless.sh" && chmod +x del-vless
+    wget -q -O del-tr "$GHBASE/xray/del-tr.sh" && chmod +x del-tr
+    wget -q -O del-ssws "$GHBASE/xray/del-ssws.sh" && chmod +x del-ssws
+    wget -q -O renew-ws "$GHBASE/xray/renew-ws.sh" && chmod +x renew-ws
+    wget -q -O renew-vless "$GHBASE/xray/renew-vless.sh" && chmod +x renew-vless
+    wget -q -O renew-tr "$GHBASE/xray/renew-tr.sh" && chmod +x renew-tr
+    wget -q -O renew-ssws "$GHBASE/xray/renew-ssws.sh" && chmod +x renew-ssws
+    wget -q -O cek-ws "$GHBASE/xray/cek-ws.sh" && chmod +x cek-ws
+    wget -q -O cek-vless "$GHBASE/xray/cek-vless.sh" && chmod +x cek-vless
+    wget -q -O cek-tr "$GHBASE/xray/cek-tr.sh" && chmod +x cek-tr
+    wget -q -O cek-ssws "$GHBASE/xray/cek-ssws.sh" && chmod +x cek-ssws
+    wget -q -O trialvmess "$GHBASE/xray/trialvmess.sh" && chmod +x trialvmess
+    wget -q -O trialvless "$GHBASE/xray/trialvless.sh" && chmod +x trialvless
+    wget -q -O trialtrojan "$GHBASE/xray/trialtrojan.sh" && chmod +x trialtrojan
+    wget -q -O trialssws "$GHBASE/xray/trialssws.sh" && chmod +x trialssws
+    wget -q -O certv2ray "$GHBASE/xray/certv2ray.sh" && chmod +x certv2ray
+
+    # ============================================================
+    # ENSURE ALL SCRIPTS ARE EXECUTABLE
+    # ============================================================
+    print_info "Setting permissions for all scripts..."
+    chmod +x /usr/bin/menu 2>/dev/null || true
+    chmod +x /usr/bin/m-* 2>/dev/null || true
+    chmod +x /usr/bin/usernew /usr/bin/trial /usr/bin/renew /usr/bin/hapus 2>/dev/null || true
+    chmod +x /usr/bin/cek /usr/bin/member /usr/bin/delete /usr/bin/autokill 2>/dev/null || true
+    chmod +x /usr/bin/ceklim /usr/bin/tendang /usr/bin/sshws /usr/bin/add-host 2>/dev/null || true
+    chmod +x /usr/bin/xp /usr/bin/fix-cek /usr/bin/speedtest 2>/dev/null || true
+    chmod +x /usr/bin/add-ws /usr/bin/add-vless /usr/bin/add-tr /usr/bin/add-ssws 2>/dev/null || true
+    chmod +x /usr/bin/del-ws /usr/bin/del-vless /usr/bin/del-tr /usr/bin/del-ssws 2>/dev/null || true
+    chmod +x /usr/bin/renew-ws /usr/bin/renew-vless /usr/bin/renew-tr /usr/bin/renew-ssws 2>/dev/null || true
+    chmod +x /usr/bin/cek-ws /usr/bin/cek-vless /usr/bin/cek-tr /usr/bin/cek-ssws 2>/dev/null || true
+    chmod +x /usr/bin/trialvmess /usr/bin/trialvless /usr/bin/trialtrojan /usr/bin/trialssws 2>/dev/null || true
+    chmod +x /usr/bin/certv2ray /usr/bin/running /usr/bin/clearcache /usr/bin/auto-reboot 2>/dev/null || true
+    chmod +x /usr/bin/restart /usr/bin/bw /usr/bin/m-tcp /usr/bin/m-dns /usr/bin/m-domain 2>/dev/null || true
 
     cd /
-    print_success "Management scripts downloaded"
+    print_success "All scripts downloaded and permissions set"
 }
 
 # ============================================================
@@ -625,13 +671,13 @@ ssh -o ProxyCommand="openssl s_client -connect $VPS_IP:777 -quiet" root@$VPS_IP
 ===========================================
 3. SSH OVER WEBSOCKET (ws-dropbear)
 ===========================================
-Port 2095 (HTTP)
+ssh -o ProxyCommand="websocat ws://$VPS_IP:80" root@$VPS_IP
 ssh -o ProxyCommand="websocat ws://$VPS_IP:2095" root@$VPS_IP
 
 ===========================================
 4. SSH OVER WEBSOCKET + SSL (ws-stunnel)
 ===========================================
-Port 700 (WSS)
+ssh -o ProxyCommand="websocat wss://$VPS_IP:443" root@$VPS_IP
 ssh -o ProxyCommand="websocat wss://$VPS_IP:700" root@$VPS_IP
 
 ===========================================
@@ -652,6 +698,39 @@ EOF
 }
 
 # ============================================================
+# CREATE VPN STATUS SCRIPT
+# ============================================================
+create_vpn_status() {
+    cat > /usr/local/bin/vpn-status <<'EOF'
+#!/bin/bash
+echo "═══════════════════════════════════════════════════════════════"
+echo "   SSH VPN SERVICE STATUS"
+echo "═══════════════════════════════════════════════════════════════"
+echo ""
+echo "SSH Server      : $(systemctl is-active ssh)   (22, 9696)"
+echo "Dropbear        : $(systemctl is-active dropbear)   (109, 143)"
+echo "Stunnel4        : $(systemctl is-active stunnel4)   (222, 777)"
+echo "ws-dropbear     : $(systemctl is-active ws-dropbear)   (2095)"
+echo "ws-stunnel      : $(systemctl is-active ws-stunnel)   (700)"
+echo "Nginx           : $(systemctl is-active nginx)   (80, 443, 81)"
+echo "Fail2ban        : $(systemctl is-active fail2ban)"
+echo "BADVPN          : $(pgrep -c badvpn-udpgw || echo 0) instances (7100-7400)"
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+echo "  VPS IP: $(curl -s ifconfig.me || echo 'unknown')"
+echo "═══════════════════════════════════════════════════════════════"
+echo ""
+echo "Commands:"
+echo "  menu         - Original menu"
+echo "  create       - Create SSH user"
+echo "  vpn-status   - Show this status"
+echo "═══════════════════════════════════════════════════════════════"
+EOF
+    chmod +x /usr/local/bin/vpn-status
+    print_success "vpn-status script created"
+}
+
+# ============================================================
 # MAIN
 # ============================================================
 main() {
@@ -664,10 +743,11 @@ main() {
     echo "This will install:"
     echo "  ✅ SSH Direct (22, 9696)"
     echo "  ✅ SSH over SSL (222, 777)"
-    echo "  ✅ SSH over WebSocket (2095)"
-    echo "  ✅ SSH over WSS (700)"
+    echo "  ✅ SSH over WebSocket (80, 2095)"
+    echo "  ✅ SSH over WSS (443, 700)"
     echo "  ✅ HTTP Proxy (3128) - for payload"
     echo "  ✅ BADVPN (7100-7400)"
+    echo "  ✅ Complete menu system"
     echo ""
     echo "⚠️  Xray compatible - no port conflicts"
     echo ""
@@ -692,6 +772,7 @@ main() {
     block_torrent
     download_scripts
     setup_cron
+    create_vpn_status
     restart_services
     create_guide
     cleanup
@@ -705,14 +786,17 @@ main() {
     echo "📡 CONNECTION METHODS:"
     echo "   SSH Direct     : 22, 9696"
     echo "   SSH SSL        : 222, 777"
-    echo "   SSH WS         : 2095"
-    echo "   SSH WSS        : 700"
+    echo "   SSH WS         : 80, 2095"
+    echo "   SSH WSS        : 443, 700"
     echo "   HTTP Proxy     : 3128"
     echo "   BADVPN         : 7100-7400"
+    echo ""
+    echo "📖 Full guide: /root/ssh-connection-guide.txt"
     echo ""
     echo "🔧 Management:"
     echo "   menu         - Original menu"
     echo "   create       - Create SSH user"
+    echo "   vpn-status   - Check services"
     echo ""
     echo "⚠️  Now run ins-xray.sh to install Xray"
     echo "   (Xray will use ports 80/443 via Nginx)"
