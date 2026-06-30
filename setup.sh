@@ -527,6 +527,7 @@ rm /root/insshws.sh >/dev/null 2>&1
 rm /root/ssh-vpn.sh >/dev/null 2>&1
 
 exit 0
+menu
 #echo -ne "[ ${yell}⚠ WARNING${NC} ] Reboot now ? (y/n)? "
 #read answer
 #if [ "$answer" == "${answer#[Yy]}" ] ;then
