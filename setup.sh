@@ -526,10 +526,11 @@ rm /root/ins-xray.sh >/dev/null 2>&1
 rm /root/insshws.sh >/dev/null 2>&1
 rm /root/ssh-vpn.sh >/dev/null 2>&1
 
-echo -ne "[ ${yell}⚠ WARNING${NC} ] Reboot now ? (y/n)? "
-read answer
-if [ "$answer" == "${answer#[Yy]}" ] ;then
 exit 0
-else
-reboot
-fi
+#echo -ne "[ ${yell}⚠ WARNING${NC} ] Reboot now ? (y/n)? "
+#read answer
+#if [ "$answer" == "${answer#[Yy]}" ] ;then
+#exit 0
+#else
+#reboot
+#fi
