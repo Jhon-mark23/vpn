@@ -5,15 +5,20 @@
 # Optimized for 1GB RAM / 1 CPU VPS
 #
 # Protocols supported:
-#   - SSH DIRECT (22, 2222)
-#   - SSH+SSL (8443 via Stunnel)
-#   - SSH+WEBSOCKET (8080 via Node.js)
-#   - SSH+WEBSOCKET+SSL (8443 via Stunnel + WebSocket)
-#   - SSH+PAYLOAD+REMOTE PROXY (Squid 3128)
-#   - SSH+SSL+PAYLOAD+REMOTE PROXY (Stunnel + Squid)
+#   - SSH Direct     : 22, 2222
+#   - SSH over SSL   : 8443 (Stunnel)
+#   - SSH over WS    : 2095 (ws-dropbear)
+#   - SSH over WSS   : 700 (ws-stunnel) / 8444 (Stunnel+WS)
+#   - HTTP Proxy     : 3128 (Squid)
+#   - Dropbear       : 109, 143
+#   - BADVPN         : 7100-7400
+#   - Xray compatible: no port conflicts
 #
-# No conflicts with Xray/V2Ray (uses non-standard ports)
+# Uses your original repository:
+#   https://github.com/Jhon-mark23/vpn
 # ==================================================
+
+set -e
 
 # ============================================================
 # COLOR DEFINITIONS
@@ -27,21 +32,10 @@ NC='\e[0m'
 # ============================================================
 # FUNCTIONS
 # ============================================================
-print_info() {
-    echo -e "[ ${green}INFO${NC} ] $1"
-}
-
-print_error() {
-    echo -e "[ ${red}ERROR${NC} ] $1"
-}
-
-print_warning() {
-    echo -e "[ ${yell}WARNING${NC} ] $1"
-}
-
-print_success() {
-    echo -e "[ ${green}✓${NC} ] $1"
-}
+print_info()  { echo -e "[ ${green}INFO${NC} ] $1"; }
+print_error() { echo -e "[ ${red}ERROR${NC} ] $1"; }
+print_warning() { echo -e "[ ${yell}WARNING${NC} ] $1"; }
+print_success() { echo -e "[ ${green}✓${NC} ] $1"; }
 
 check_success() {
     if [ $? -eq 0 ]; then
@@ -103,7 +97,7 @@ install_base_packages() {
 
     apt-get remove --purge ufw firewalld exim4 -y 2>/dev/null || true
 
-    local packages="screen curl jq bzip2 gzip vnstat coreutils rsyslog iftop zip unzip git apt-transport-https build-essential net-tools wget gnupg gnupg2 iptables-persistent netfilter-persistent openssl ca-certificates stunnel4 dropbear squid fail2ban"
+    local packages="screen curl jq bzip2 gzip vnstat coreutils rsyslog iftop zip unzip git apt-transport-https build-essential net-tools wget gnupg gnupg2 iptables-persistent netfilter-persistent openssl ca-certificates stunnel4 dropbear squid fail2ban nginx python3 python3-pip"
 
     for pkg in $packages; do
         if ! dpkg -l | grep -q "^ii  $pkg "; then
@@ -113,11 +107,10 @@ install_base_packages() {
         fi
     done
 
-    # Install Node.js for WebSocket proxy
-    if ! command -v node &>/dev/null; then
-        print_info "Installing Node.js 20 LTS for WebSocket proxy..."
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >> /dev/null 2>&1
-        apt install -y nodejs >> /dev/null 2>&1 || true
+    # Python symlink for Debian
+    if [[ "$OS" == "debian" ]] && [ ! -f /usr/bin/python ] && [ -f /usr/bin/python3 ]; then
+        ln -s /usr/bin/python3 /usr/bin/python
+        print_info "Created python symlink for Debian"
     fi
 
     check_success "Base packages installed"
@@ -200,12 +193,11 @@ configure_ssh() {
 }
 
 # ============================================================
-# INSTALL DROPBEAR (OPTIONAL)
+# INSTALL DROPBEAR
 # ============================================================
 install_dropbear() {
-    print_info "Installing Dropbear (alternative SSH)..."
+    print_info "Installing Dropbear (ports 109, 143)..."
     apt install -y dropbear 2>/dev/null
-    check_success "Dropbear installation"
 
     cat > /etc/default/dropbear <<-DROPBEAR
 NO_START=0
@@ -227,7 +219,7 @@ DROPBEAR
 # INSTALL BADVPN (UDP GATEWAY)
 # ============================================================
 install_badvpn() {
-    print_info "Installing BADVPN UDP gateway..."
+    print_info "Installing BADVPN UDP gateway (ports 7100-7400)..."
     cd /tmp
     wget -q -O /usr/bin/badvpn-udpgw "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/newudpgw"
     chmod +x /usr/bin/badvpn-udpgw
@@ -278,48 +270,106 @@ EOF
 }
 
 # ============================================================
-# CONFIGURE STUNNEL4 (SSH+SSL ON PORT 8443)
+# INSTALL WEBSOCKET SSH (ws-dropbear & ws-stunnel)
+# Uses your original repository binaries
 # ============================================================
-configure_stunnel() {
-    print_info "Configuring Stunnel4 (SSH over SSL) on port 8443..."
-    apt install -y stunnel4 2>/dev/null
+install_websocket_ssh() {
+    print_info "Installing WebSocket SSH (ws-dropbear, ws-stunnel)..."
 
-    mkdir -p /var/log/stunnel4 /etc/stunnel /var/run/stunnel4
+    # Download binaries from your repo
+    wget -q -O /usr/local/bin/ws-dropbear \
+        "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/sshws/ws-dropbear"
+    wget -q -O /usr/local/bin/ws-stunnel \
+        "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/sshws/ws-stunnel"
 
-    if ! id "stunnel4" &>/dev/null; then
-        useradd --system --no-create-home --shell /usr/sbin/nologin stunnel4 2>/dev/null || true
+    chmod +x /usr/local/bin/ws-dropbear /usr/local/bin/ws-stunnel
+
+    # Fix shebang to use python3
+    sed -i '1{/^#!/d}' /usr/local/bin/ws-stunnel 2>/dev/null
+    sed -i '1{/^#!/d}' /usr/local/bin/ws-dropbear 2>/dev/null
+    sed -i '1i#!/usr/bin/env python3' /usr/local/bin/ws-stunnel
+    sed -i '1i#!/usr/bin/env python3' /usr/local/bin/ws-dropbear
+
+    # Systemd service for ws-dropbear (port 2095)
+    cat > /etc/systemd/system/ws-dropbear.service <<-END
+[Unit]
+Description=Websocket-Dropbear (SSH over WS)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/env python3 /usr/local/bin/ws-dropbear 2095
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+END
+
+    # Systemd service for ws-stunnel (port 700)
+    cat > /etc/systemd/system/ws-stunnel.service <<-END
+[Unit]
+Description=SSH Over Websocket-SSL (WSS)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/env python3 /usr/local/bin/ws-stunnel 700
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+END
+
+    systemctl daemon-reload
+    systemctl enable ws-dropbear ws-stunnel
+    systemctl restart ws-dropbear ws-stunnel
+
+    # Verify
+    if systemctl is-active --quiet ws-dropbear; then
+        print_success "ws-dropbear running on port 2095"
+    else
+        print_warning "ws-dropbear failed to start – check journalctl -u ws-dropbear"
     fi
 
-    chown stunnel4:stunnel4 /var/log/stunnel4 2>/dev/null || chown root:root /var/log/stunnel4
+    if systemctl is-active --quiet ws-stunnel; then
+        print_success "ws-stunnel running on port 700"
+    else
+        print_warning "ws-stunnel failed to start – check journalctl -u ws-stunnel"
+    fi
+}
+
+# ============================================================
+# CONFIGURE STUNNEL4 (SSH+SSL & WSS on non-conflicting ports)
+# ============================================================
+configure_stunnel() {
+    print_info "Configuring Stunnel4 (ports 8443, 8444)..."
+
+    # Generate certificate
+    openssl req -new -x509 -days 3650 -nodes \
+        -subj "/C=PH/ST=Manila/L=Manila/O=SSH-VPN/CN=MARCSCRIPT" \
+        -out /etc/stunnel/stunnel.pem \
+        -keyout /etc/stunnel/stunnel.pem 2>/dev/null
+    chmod 600 /etc/stunnel/stunnel.pem
+
+    # Create runtime directory
+    mkdir -p /var/run/stunnel4
     chown stunnel4:stunnel4 /var/run/stunnel4 2>/dev/null || chown root:root /var/run/stunnel4
     chmod 755 /var/run/stunnel4
 
-    # Generate self-signed cert
-    cd /tmp
-    openssl genrsa -out /tmp/stunnel-key.pem 2048 2>/dev/null
-    openssl req -new -x509 \
-        -key /tmp/stunnel-key.pem \
-        -out /tmp/stunnel-cert.pem \
-        -days 3650 \
-        -subj "/C=PH/ST=Metro Manila/L=Manila/O=SSH-VPN/CN=localhost" \
-        2>/dev/null
-    cat /tmp/stunnel-key.pem /tmp/stunnel-cert.pem > /etc/stunnel/stunnel.pem
-    chmod 600 /etc/stunnel/stunnel.pem
-    chown stunnel4:stunnel4 /etc/stunnel/stunnel.pem 2>/dev/null || true
-    rm -f /tmp/stunnel-key.pem /tmp/stunnel-cert.pem
-    cd
-
-    cat > /etc/stunnel/stunnel.conf <<END
+    # Clean config – NO deprecated options
+    cat > /etc/stunnel/stunnel.conf <<'EOF'
 pid = /var/run/stunnel.pid
 client = no
 output = /var/log/stunnel.log
 foreground = no
 debug = 3
 sslVersion = TLSv1.2
-options = NO_SSLv2
-options = NO_SSLv3
-options = NO_TLSv1
-options = NO_TLSv1.1
 
 [ssh-ssl]
 accept = 8443
@@ -329,159 +379,25 @@ TIMEOUTclose = 0
 
 [ws-ssl]
 accept = 8444
-connect = 127.0.0.1:8080
+connect = 127.0.0.1:2095
 cert = /etc/stunnel/stunnel.pem
 TIMEOUTclose = 0
-END
-
-    sed -i 's/ENABLED=0/ENABLED=1/' /etc/default/stunnel4
-
-    mkdir -p /etc/systemd/system/stunnel4.service.d/
-    cat > /etc/systemd/system/stunnel4.service.d/override.conf <<EOF
-[Service]
-RuntimeDirectory=stunnel4
-RuntimeDirectoryMode=0755
-ExecStartPre=/bin/mkdir -p /var/run/stunnel4
-ExecStartPre=/bin/chown stunnel4:stunnel4 /var/run/stunnel4
 EOF
 
+    # Enable stunnel
+    echo 'ENABLED=1' > /etc/default/stunnel4
+
+    # Remove any systemd override that might cause issues
+    rm -f /etc/systemd/system/stunnel4.service.d/override.conf
     systemctl daemon-reload
-    systemctl enable stunnel4 2>/dev/null || true
-    systemctl restart stunnel4 2>/dev/null || {
-        print_error "Failed to start Stunnel4"
-        exit 1
-    }
 
-    check_success "Stunnel4 configured on ports 8443 (SSH+SSL) and 8444 (WS+SSL)"
-}
+    systemctl enable stunnel4
+    systemctl restart stunnel4
 
-# ============================================================
-# CONFIGURE WEBSOCKET PROXY (ws-proxy.js) - PORT 8080
-# ============================================================
-configure_websocket() {
-    print_info "Configuring WebSocket proxy (ws-proxy.js) on port 8080..."
-
-    mkdir -p /opt/ws-proxy
-
-    cat > /opt/ws-proxy/ws-proxy.js <<'EOF'
-#!/usr/bin/env node
-const net = require('net');
-const http = require('http');
-const fs = require('fs');
-
-const SSH_HOST = '127.0.0.1';
-const SSH_PORT = 22;
-const WS_PORT = 8080;
-const LOG_FILE = '/var/log/ws-proxy.log';
-
-function log(msg) {
-    const ts = new Date().toISOString();
-    const line = `[${ts}] ${msg}\n`;
-    console.log(line.trim());
-    fs.appendFileSync(LOG_FILE, line, { flag: 'a' });
-}
-
-log('Starting SSH WebSocket Proxy on port ' + WS_PORT);
-
-const server = http.createServer();
-
-// Handle HTTP CONNECT method (for proxy)
-server.on('connect', (req, clientSocket) => {
-    log('CONNECT: ' + req.url);
-    const ssh = net.connect(SSH_PORT, SSH_HOST, () => {
-        clientSocket.write('HTTP/1.1 200 Connection Established\r\nProxy-Agent: SSH-WS-Proxy\r\n\r\n');
-        ssh.pipe(clientSocket);
-        clientSocket.pipe(ssh);
-    });
-    ssh.on('error', (e) => { log('SSH error: ' + e.message); clientSocket.destroy(); });
-    clientSocket.on('error', (e) => { log('Socket error: ' + e.message); ssh.destroy(); });
-});
-
-// Handle WebSocket upgrade
-server.on('upgrade', (req, socket) => {
-    log('WebSocket upgrade from ' + req.headers.host);
-    const ssh = net.connect(SSH_PORT, SSH_HOST, () => {
-        socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n');
-        ssh.pipe(socket);
-        socket.pipe(ssh);
-    });
-    ssh.on('error', (e) => { log('WS SSH error: ' + e.message); socket.destroy(); });
-    socket.on('error', (e) => { log('Socket error: ' + e.message); ssh.destroy(); });
-});
-
-// HTTP status page
-server.on('request', (req, res) => {
-    if (req.url === '/' || req.url === '/status') {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(
-            '<html><head><title>SSH WebSocket Proxy</title></head>' +
-            '<body><h1>🚀 SSH WebSocket Proxy</h1>' +
-            '<p>Status: Running</p>' +
-            '<p>Uptime: ' + Math.floor(process.uptime()) + 's</p>' +
-            '<p>SSH Host: ' + SSH_HOST + ':' + SSH_PORT + '</p>' +
-            '<hr><small>Multi-Protocol SSH VPN</small></body></html>'
-        );
-    } else {
-        res.writeHead(404);
-        res.end('Not Found');
-    }
-});
-
-server.listen(WS_PORT, '0.0.0.0', () => {
-    log('✅ WebSocket proxy listening on port ' + WS_PORT);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    log('SIGTERM received, shutting down...');
-    server.close(() => process.exit(0));
-});
-
-process.on('SIGINT', () => {
-    log('SIGINT received, shutting down...');
-    server.close(() => process.exit(0));
-});
-
-process.on('uncaughtException', (e) => {
-    log('Uncaught exception: ' + e.message);
-});
-EOF
-
-    chmod +x /opt/ws-proxy/ws-proxy.js
-
-    # Create systemd service
-    cat > /etc/systemd/system/ws-proxy.service <<EOF
-[Unit]
-Description=SSH WebSocket Proxy
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/node /opt/ws-proxy/ws-proxy.js
-Restart=always
-RestartSec=5
-User=root
-StandardOutput=journal
-StandardError=journal
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable ws-proxy 2>/dev/null || true
-    systemctl start ws-proxy 2>/dev/null || {
-        print_error "Failed to start WebSocket proxy"
-        exit 1
-    }
-
-    sleep 2
-    if systemctl is-active --quiet ws-proxy; then
-        check_success "WebSocket proxy running on port 8080"
+    if systemctl is-active --quiet stunnel4; then
+        print_success "Stunnel4 running on ports 8443, 8444"
     else
-        print_error "WebSocket proxy failed to start"
-        journalctl -u ws-proxy -n 10
+        print_error "Stunnel4 failed to start – check journalctl -u stunnel4"
         exit 1
     fi
 }
@@ -492,7 +408,6 @@ EOF
 install_fail2ban() {
     print_info "Installing Fail2ban..."
     apt install -y fail2ban 2>/dev/null
-    check_success "Fail2ban installation"
 
     cat > /etc/fail2ban/jail.local <<F2B
 [DEFAULT]
@@ -503,13 +418,13 @@ backend   = polling
 
 [sshd]
 enabled   = true
-port      = ssh,2222,8443,8444,8080
+port      = ssh,2222,8443,8444,2095,700
 logpath   = %(sshd_log)s
 maxretry  = 5
 F2B
 
-    systemctl enable fail2ban 2>/dev/null || true
-    systemctl restart fail2ban 2>/dev/null || true
+    systemctl enable fail2ban
+    systemctl restart fail2ban
     check_success "Fail2ban configured"
 }
 
@@ -665,36 +580,15 @@ END
 }
 
 # ============================================================
-# CLEANUP
-# ============================================================
-cleanup() {
-    print_info "Cleaning up..."
-    apt autoclean -y 2>/dev/null || true
-    apt autoremove -y 2>/dev/null || true
-
-    for pkg in unscd samba apache2 bind9 sendmail; do
-        if dpkg -l | grep -q "^ii  $pkg "; then
-            apt-get -y --purge remove $pkg 2>/dev/null || true
-        fi
-    done
-
-    history -c
-    echo "unset HISTFILE" >> /etc/profile
-
-    rm -f /root/key.pem /root/cert.pem /root/ssh-vpn.sh /root/bbr.sh 2>/dev/null
-    check_success "Cleanup completed"
-}
-
-# ============================================================
 # RESTART SERVICES
 # ============================================================
 restart_services() {
     print_info "Restarting all services..."
-    for service in ssh dropbear stunnel4 ws-proxy squid fail2ban vnstat rc-local cron; do
+    for service in ssh dropbear stunnel4 ws-dropbear ws-stunnel squid fail2ban vnstat rc-local cron; do
         if systemctl restart $service 2>/dev/null; then
             print_success "Restarted $service"
         else
-            print_warning "Failed to restart $service"
+            print_warning "Failed to restart $service (may not be installed)"
         fi
     done
 
@@ -730,35 +624,26 @@ VPS IP: $VPS_IP
    ssh -o ProxyCommand="openssl s_client -connect $VPS_IP:8443 -quiet" root@$VPS_IP
 
 ===========================================
-3. SSH OVER WEBSOCKET (WS)
+3. SSH OVER WEBSOCKET (ws-dropbear)
 ===========================================
-   Port 8080
-   ssh -o ProxyCommand="websocat ws://$VPS_IP:8080" root@$VPS_IP
+   Port 2095 (HTTP)
+   ssh -o ProxyCommand="websocat ws://$VPS_IP:2095" root@$VPS_IP
 
 ===========================================
-4. SSH OVER WEBSOCKET + SSL (WSS)
+4. SSH OVER WEBSOCKET + SSL (ws-stunnel)
 ===========================================
-   Port 8444 (Stunnel on top of WebSocket)
+   Port 700 (WSS)
+   ssh -o ProxyCommand="websocat wss://$VPS_IP:700" root@$VPS_IP
+
+===========================================
+5. SSH OVER WSS VIA STUNNEL (Port 8444)
+===========================================
    ssh -o ProxyCommand="openssl s_client -connect $VPS_IP:8444 -quiet" root@$VPS_IP
-   or use websocat wss://$VPS_IP:8444
 
 ===========================================
-5. SSH + PAYLOAD + REMOTE PROXY (HTTP Injector / KPN)
+6. HTTP PROXY (Squid) – for Payload
 ===========================================
-   Proxy: HTTP
-   Proxy Host: $VPS_IP
-   Proxy Port: 3128
-   SSH Host: $VPS_IP
-   SSH Port: 22 or 2222
-   Payload: custom (client-side)
-
-===========================================
-6. SSH + SSL + PAYLOAD + REMOTE PROXY
-===========================================
-   SSH Host: $VPS_IP
-   SSH Port: 8443 (SSL)
-   Proxy: HTTP $VPS_IP:3128
-   SSL enabled
+   HTTP Proxy: $VPS_IP:3128
 
 ===========================================
 MANAGEMENT
@@ -766,55 +651,20 @@ MANAGEMENT
    menu         - Original menu
    create       - Create SSH user
    vpn-status   - Check services
-   wsproxy      - Manage WebSocket proxy (start|stop|restart|status|logs)
+   wsproxy      - Manage WebSocket services
 
 ===========================================
 SERVICE MANAGEMENT
 ===========================================
-   systemctl status ssh        - SSH status
-   systemctl status stunnel4   - SSL status
-   systemctl status ws-proxy   - WebSocket status
-   systemctl status squid      - HTTP proxy status
-
-   # WebSocket proxy commands
-   wsproxy start|stop|restart|status|logs
+   systemctl status ssh
+   systemctl status stunnel4
+   systemctl status ws-dropbear
+   systemctl status ws-stunnel
+   systemctl status squid
 
 ===========================================
 EOF
     print_success "Connection guide saved to /root/ssh-vpn-guide.txt"
-}
-
-# ============================================================
-# CREATE WS-PROXY MANAGEMENT SCRIPT
-# ============================================================
-create_wsproxy_script() {
-    cat > /usr/local/bin/wsproxy <<'EOF'
-#!/bin/bash
-case "$1" in
-    start|stop|restart|status)
-        systemctl $1 ws-proxy
-        ;;
-    logs)
-        journalctl -u ws-proxy -f
-        ;;
-    kill)
-        fuser -k 8080/tcp 2>/dev/null
-        echo "WebSocket proxy killed on port 8080"
-        ;;
-    *)
-        echo "Usage: wsproxy {start|stop|restart|status|logs|kill}"
-        echo ""
-        echo "  start   - Start WebSocket proxy"
-        echo "  stop    - Stop WebSocket proxy"
-        echo "  restart - Restart WebSocket proxy"
-        echo "  status  - Check WebSocket proxy status"
-        echo "  logs    - View WebSocket proxy logs"
-        echo "  kill    - Force kill on port 8080"
-        ;;
-esac
-EOF
-    chmod +x /usr/local/bin/wsproxy
-    print_success "WebSocket proxy management script created (wsproxy)"
 }
 
 # ============================================================
@@ -828,11 +678,13 @@ echo "   SSH VPN SERVICE STATUS"
 echo "═══════════════════════════════════════════════════════════════"
 echo ""
 echo "SSH Server      : $(systemctl is-active ssh)   (22, 2222)"
+echo "Dropbear        : $(systemctl is-active dropbear)   (109, 143)"
 echo "Stunnel4        : $(systemctl is-active stunnel4)   (8443, 8444)"
-echo "WebSocket Proxy : $(systemctl is-active ws-proxy)   (8080)"
+echo "ws-dropbear     : $(systemctl is-active ws-dropbear)   (2095)"
+echo "ws-stunnel      : $(systemctl is-active ws-stunnel)   (700)"
 echo "Squid Proxy     : $(systemctl is-active squid)   (3128)"
 echo "Fail2ban        : $(systemctl is-active fail2ban)"
-echo "Dropbear        : $(systemctl is-active dropbear)   (109, 143)"
+echo "BADVPN          : $(pgrep -c badvpn-udpgw || echo 0) instances (7100-7400)"
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
 echo "  VPS IP: $(curl -s ifconfig.me || echo 'unknown')"
@@ -841,12 +693,32 @@ echo ""
 echo "Commands:"
 echo "  menu         - Original menu"
 echo "  create       - Create SSH user"
-echo "  wsproxy      - Manage WebSocket proxy"
 echo "  vpn-status   - Show this status"
 echo "═══════════════════════════════════════════════════════════════"
 EOF
     chmod +x /usr/local/bin/vpn-status
-    print_success "VPN status script created (vpn-status)"
+    print_success "vpn-status script created"
+}
+
+# ============================================================
+# CLEANUP
+# ============================================================
+cleanup() {
+    print_info "Cleaning up..."
+    apt autoclean -y 2>/dev/null || true
+    apt autoremove -y 2>/dev/null || true
+
+    for pkg in unscd samba apache2 bind9 sendmail; do
+        if dpkg -l | grep -q "^ii  $pkg "; then
+            apt-get -y --purge remove $pkg 2>/dev/null || true
+        fi
+    done
+
+    history -c
+    echo "unset HISTFILE" >> /etc/profile
+
+    rm -f /root/key.pem /root/cert.pem /root/ssh-vpn.sh /root/bbr.sh 2>/dev/null
+    check_success "Cleanup completed"
 }
 
 # ============================================================
@@ -863,12 +735,13 @@ main() {
     echo "Protocols to be installed:"
     echo "  ✅ SSH Direct       : 22, 2222"
     echo "  ✅ SSH Over SSL     : 8443 (Stunnel)"
-    echo "  ✅ SSH Over WebSocket: 8080 (ws-proxy.js)"
-    echo "  ✅ SSH WebSocket SSL: 8444 (Stunnel + WS)"
-    echo "  ✅ HTTP Proxy       : 3128 (Squid) – for Payload + Remote Proxy"
-    echo "  ✅ SSH + SSL + Proxy: client-side chaining"
+    echo "  ✅ SSH Over WebSocket: 2095 (ws-dropbear)"
+    echo "  ✅ SSH Over WSS     : 700 (ws-stunnel) / 8444 (Stunnel)"
+    echo "  ✅ HTTP Proxy       : 3128 (Squid) – for Payload"
+    echo "  ✅ Dropbear         : 109, 143"
+    echo "  ✅ BADVPN           : 7100-7400"
     echo ""
-    echo "⚠️  No conflicts with Xray (Xray uses 80, 443, 81, etc.)"
+    echo "⚠️  No conflicts with Xray (uses 80, 443, 81, etc.)"
     echo ""
     read -p "Continue? (y/N): " -n 1 -r
     echo
@@ -885,14 +758,13 @@ main() {
     install_dropbear
     install_badvpn
     configure_squid
+    install_websocket_ssh
     configure_stunnel
-    configure_websocket
     install_fail2ban
     optimize_system
     block_torrent
     download_scripts
     setup_cron
-    create_wsproxy_script
     create_vpn_status
     restart_services
     create_guide
@@ -908,16 +780,17 @@ main() {
     echo "📡 CONNECTION METHODS:"
     echo "   SSH Direct     : 22, 2222"
     echo "   SSH SSL        : 8443"
-    echo "   SSH WebSocket  : 8080"
-    echo "   SSH WSS        : 8444"
-    echo "   HTTP Proxy     : 3128 (Squid)"
+    echo "   SSH WS         : 2095"
+    echo "   SSH WSS        : 700 / 8444"
+    echo "   HTTP Proxy     : 3128"
+    echo "   Dropbear       : 109, 143"
+    echo "   BADVPN         : 7100-7400"
     echo ""
     echo "📖 Full guide: /root/ssh-vpn-guide.txt"
     echo ""
     echo "🔧 Management:"
     echo "   menu         - Original menu"
     echo "   create       - Create SSH user"
-    echo "   wsproxy      - Manage WebSocket proxy"
     echo "   vpn-status   - Check services"
     echo ""
     echo "==========================================="
