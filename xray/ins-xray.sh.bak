@@ -1,33 +1,16 @@
 #!/bin/bash
-# ============================================================
-# Enhanced Xray Installation Script
-# ============================================================
-# Features:
-#   - Better certificate handling with multiple fallback methods
-#   - Fixed nginx http2 deprecation warnings
-#   - Improved error handling and logging
-#   - Better OS compatibility
-#   - Self-signed certificate fallback
-#   - Automatic service verification
-# ============================================================
-
 MYIP=$(wget -qO- ipv4.icanhazip.com)
 echo "Checking VPS"
 clear
 echo ""
 date
 echo ""
-domain=$(cat /root/domain 2>/dev/null)
-if [ -z "$domain" ]; then
-    echo -e "\e[1;31mERROR: Domain not found! Please run setup.sh first.\e[0m"
-    exit 1
-fi
+domain=$(cat /root/domain)
 sleep 0.5
 
 # Colors
 green='\e[0;32m'
 yell='\e[1;33m'
-red='\e[1;31m'
 NC='\e[0m'
 
 # Detect OS
@@ -44,158 +27,108 @@ detect_os() {
     echo -e "[ ${green}INFO${NC} ] Detected OS: $OS $VER"
     
     if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
-        echo -e "[ ${red}ERROR${NC} ] This script only supports Ubuntu or Debian"
+        echo -e "[ ERROR ] This script only supports Ubuntu or Debian"
         exit 1
-    fi
-}
-
-# Function to check command success
-check_success() {
-    if [ $? -eq 0 ]; then
-        echo -e "[ ${green}OK${NC} ] $1"
-    else
-        echo -e "[ ${red}FAILED${NC} ] $1"
-        return 1
     fi
 }
 
 detect_os
 
-# Set non-interactive mode
-export DEBIAN_FRONTEND=noninteractive
-export NEEDRESTART_MODE=a
-
 mkdir -p /etc/xray
-echo -e "[ ${green}INFO${NC} ] Installing required packages..."
-
-# Install packages with better handling
-apt update -y >/dev/null 2>&1
-
-# Core packages
-PACKAGES="iptables iptables-persistent net-tools screen curl socat xz-utils wget 
-apt-transport-https gnupg gnupg2 dnsutils lsb-release bash-completion cron 
-openssl zip pwgen ca-certificates"
-
-# Install core packages
-for pkg in $PACKAGES; do
-    if ! dpkg -l | grep -q "^ii  $pkg "; then
-        apt install -y $pkg >/dev/null 2>&1
-    fi
-done
-
-# Handle netcat package based on OS
-if [[ "$OS" == "ubuntu" ]]; then
-    apt install -y netcat-openbsd >/dev/null 2>&1
-elif [[ "$OS" == "debian" ]]; then
-    apt install -y netcat-traditional >/dev/null 2>&1 || apt install -y netcat >/dev/null 2>&1 || true
-    apt install -y software-properties-common >/dev/null 2>&1
-fi
-
-check_success "Package installation"
-
+echo -e "[ ${green}INFO${NC} ] Checking..."
+apt install iptables iptables-persistent -y
+apt install -y net-tools screen
 sleep 0.5
 echo -e "[ ${green}INFO${NC} ] Setting timezone"
-timedatectl set-timezone Asia/Manila 2>/dev/null || true
-timedatectl set-ntp true 2>/dev/null || true
+timedatectl set-timezone Asia/Manila
+timedatectl set-ntp true
+sleep 0.5
+echo -e "[ ${green}INFO${NC} ] Setting up packages"
+apt clean all && apt update
+
+# Fix: Install packages with fallback for Debian
+apt install -y curl socat xz-utils wget apt-transport-https gnupg gnupg2 gnupg1 dnsutils lsb-release bash-completion cron openssl zip pwgen netcat-openbsd 2>/dev/null
+
+# Fix: netcat-openbsd might not be available on some Debian versions, fallback to netcat
+if [ $? -ne 0 ]; then
+    echo -e "[ ${green}INFO${NC} ] Trying alternative netcat package..."
+    apt install -y netcat-traditional || apt install -y netcat || true
+fi
+
+# Fix: Debian might need software-properties-common for add-apt-repository
+if [[ "$OS" == "debian" ]]; then
+    apt install -y software-properties-common
+fi
 
 # Install xray core
 sleep 0.5
-echo -e "[ ${green}INFO${NC} ] Downloading & Installing Xray core"
-
+echo -e "[ ${green}INFO${NC} ] Downloading & Installing xray core"
 domainSock_dir="/run/xray"
-[ ! -d $domainSock_dir ] && mkdir -p $domainSock_dir
-chown www-data.www-data $domainSock_dir 2>/dev/null || true
+! [ -d $domainSock_dir ] && mkdir $domainSock_dir
+chown www-data.www-data $domainSock_dir
 
 mkdir -p /var/log/xray
 mkdir -p /etc/xray
-chown www-data.www-data /var/log/xray 2>/dev/null || true
-chmod 755 /var/log/xray
+chown www-data.www-data /var/log/xray
+chmod +x /var/log/xray
+touch /var/log/xray/access.log
+touch /var/log/xray/error.log
+touch /var/log/xray/access2.log
+touch /var/log/xray/error2.log
 
-# Create log files
-touch /var/log/xray/access.log 2>/dev/null
-touch /var/log/xray/error.log 2>/dev/null
-touch /var/log/xray/access2.log 2>/dev/null
-touch /var/log/xray/error2.log 2>/dev/null
-chown www-data.www-data /var/log/xray/*.log 2>/dev/null || true
-
-# Install Xray
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data
-check_success "Xray installation"
 
 ## SSL Certificate for Xray
-echo -e "[ ${green}INFO${NC} ] Setting up SSL certificate..."
-
-systemctl stop nginx 2>/dev/null || true
+systemctl stop nginx
 mkdir -p /root/.acme.sh
 
-# Install acme.sh - try official first
-echo -e "[ ${green}INFO${NC} ] Installing acme.sh..."
-if ! curl -s https://get.acme.sh | sh -s email=admin@$domain >/dev/null 2>&1; then
-    echo -e "[ ${yell}WARNING${NC} ] Official acme.sh install failed, trying alternative..."
-    curl -s https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
+# Fix: Use official acme.sh install instead of netlify (more reliable)
+if [[ "$OS" == "debian" ]]; then
+    # Debian sometimes has issues with netlify domain
+    curl https://get.acme.sh | sh -s email=admin@$domain
+else
+    curl https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
     chmod +x /root/.acme.sh/acme.sh
 fi
 
-# Setup acme.sh
-/root/.acme.sh/acme.sh --upgrade --auto-upgrade >/dev/null 2>&1
-/root/.acme.sh/acme.sh --set-default-ca --server letsencrypt >/dev/null 2>&1
+/root/.acme.sh/acme.sh --upgrade --auto-upgrade
+/root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
 
-# Try multiple methods for certificate issuance
-CERT_ISSUED=false
+# Fix: Try multiple methods for certificate issuance
 echo -e "[ ${green}INFO${NC} ] Issuing SSL certificate for $domain..."
 
 # Method 1: Standalone
-echo -e "[ ${green}INFO${NC} ] Trying standalone method..."
-/root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256 2>&1 | grep -v "Skip" | grep -v "Already" || true
+/root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256 2>/dev/null
 
-if [ -f /root/.acme.sh/${domain}_ecc/${domain}.cer ]; then
-    CERT_ISSUED=true
-    echo -e "[ ${green}SUCCESS${NC} ] Certificate issued via standalone method"
+# Method 2: If standalone fails, try webroot (nginx must be running)
+if [ $? -ne 0 ]; then
+    echo -e "[ ${green}INFO${NC} ] Standalone failed, trying webroot method..."
+    systemctl start nginx
+    /root/.acme.sh/acme.sh --issue -d $domain --webroot /home/vps/public_html -k ec-256 2>/dev/null || true
+    systemctl stop nginx
 fi
 
-# Method 2: Webroot if standalone failed
-if [ "$CERT_ISSUED" = false ]; then
-    echo -e "[ ${yell}WARNING${NC} ] Standalone failed, trying webroot method..."
-    mkdir -p /home/vps/public_html
-    systemctl start nginx 2>/dev/null || true
-    /root/.acme.sh/acme.sh --issue -d $domain --webroot /home/vps/public_html -k ec-256 2>&1 | grep -v "Skip" | grep -v "Already" || true
-    systemctl stop nginx 2>/dev/null || true
-    
-    if [ -f /root/.acme.sh/${domain}_ecc/${domain}.cer ]; then
-        CERT_ISSUED=true
-        echo -e "[ ${green}SUCCESS${NC} ] Certificate issued via webroot method"
-    fi
-fi
+# Install certificate
+~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc 2>/dev/null
 
-# Install certificate if issued
-if [ "$CERT_ISSUED" = true ]; then
-    ~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc 2>/dev/null
-    check_success "Certificate installation"
-else
-    # Fallback: Create self-signed certificate
+# Check if certificate exists, if not create self-signed
+if [ ! -f /etc/xray/xray.crt ]; then
     echo -e "[ ${yell}WARNING${NC} ] Certificate issuance failed. Creating self-signed certificate..."
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /etc/xray/xray.key -out /etc/xray/xray.crt \
-        -subj "/C=PH/ST=Metro Manila/L=Manila/O=VPN/CN=$domain" 2>/dev/null
-    check_success "Self-signed certificate creation"
+        -subj "/C=PH/ST=Metro Manila/L=Manila/O=MarcScript/CN=$domain" 2>/dev/null
 fi
 
-# Set proper permissions
-chmod 600 /etc/xray/xray.crt /etc/xray/xray.key 2>/dev/null || true
-chown www-data:www-data /etc/xray/xray.crt /etc/xray/xray.key 2>/dev/null || true
-
 # Nginx SSL renewal script
-cat > /usr/local/bin/ssl_renew.sh << 'EOF'
-#!/bin/bash
-systemctl stop nginx 2>/dev/null
+echo -n '#!/bin/bash
+systemctl stop nginx
 "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" &> /root/renew_ssl.log
-systemctl start nginx 2>/dev/null
-systemctl status nginx 2>/dev/null
-EOF
+systemctl start nginx
+systemctl status nginx
+' > /usr/local/bin/ssl_renew.sh
 chmod +x /usr/local/bin/ssl_renew.sh
-
 if ! grep -q 'ssl_renew.sh' /var/spool/cron/crontabs/root 2>/dev/null; then
-    (crontab -l 2>/dev/null; echo "15 03 */3 * * /usr/local/bin/ssl_renew.sh") | crontab - 2>/dev/null
+    (crontab -l 2>/dev/null; echo "15 03 */3 * * /usr/local/bin/ssl_renew.sh") | crontab -
 fi
 
 mkdir -p /home/vps/public_html
@@ -203,7 +136,7 @@ mkdir -p /home/vps/public_html
 # Generate UUID
 uuid=$(cat /proc/sys/kernel/random/uuid)
 
-# Xray config
+# Xray config (same as original)
 cat > /etc/xray/config.json << END
 {
   "log" : {
@@ -460,7 +393,6 @@ END
 
 rm -rf /etc/systemd/system/xray.service.d
 rm -rf /etc/systemd/system/xray@.service
-
 cat <<EOF> /etc/systemd/system/xray.service
 [Unit]
 Description=Xray Service
@@ -480,6 +412,7 @@ LimitNOFILE=51200
 
 [Install]
 WantedBy=multi-user.target
+
 EOF
 
 cat > /etc/systemd/system/runn.service <<EOF
@@ -498,10 +431,8 @@ WantedBy=multi-user.target
 EOF
 
 # ============================================================
-# ENHANCED NGINX CONFIG - Fixed http2 deprecation
+# Nginx config - port 81 for nginx, 80/443 for xray+ssh ws
 # ============================================================
-echo -e "[ ${green}INFO${NC} ] Creating nginx configuration with fixed http2..."
-
 cat > /etc/nginx/conf.d/xray.conf <<'EOF'
 # Nginx port 81 - internal web page
 server {
@@ -581,9 +512,8 @@ server {
 
 # Port 443 - TLS (Xray + SSH WSS)
 server {
-    listen 443 ssl reuseport;
-    listen [::]:443 ssl reuseport;
-    http2 on;
+    listen 443 ssl http2 reuseport;
+    listen [::]:443 ssl http2 reuseport;
     server_name *.$domain;
     ssl_certificate /etc/xray/xray.crt;
     ssl_certificate_key /etc/xray/xray.key;
@@ -686,94 +616,54 @@ server {
 }
 EOF
 
-# Fix the domain variable in nginx config
-sed -i "s/\\\$domain/$domain/g" /etc/nginx/conf.d/xray.conf
-
-echo -e "[ ${green}INFO${NC} ] Restarting all services"
+echo -e "$yell[SERVICE]$NC Restart All services"
 systemctl daemon-reload
-
-# Enable & restart Xray
-echo -e "[ ${green}INFO${NC} ] Enabling and restarting Xray..."
-systemctl enable xray 2>/dev/null || true
+sleep 0.5
+echo -e "[ ${green}ok${NC} ] Enable & restart xray"
+systemctl daemon-reload
+systemctl enable xray
 systemctl restart xray
-check_success "Xray service restart"
+systemctl restart nginx
+systemctl enable runn
+systemctl restart runn
 
-# Restart Nginx
-echo -e "[ ${green}INFO${NC} ] Testing and restarting Nginx..."
-nginx -t 2>/dev/null
-if [ $? -eq 0 ]; then
-    systemctl restart nginx
-    check_success "Nginx restart"
-else
-    echo -e "[ ${red}ERROR${NC} ] Nginx configuration test failed!"
-    echo -e "[ ${yell}WARNING${NC} ] Please check: nginx -t"
-fi
-
-systemctl enable runn 2>/dev/null || true
-systemctl restart runn 2>/dev/null || true
-
-# Download management scripts
 cd /usr/bin/
-
-echo -e "[ ${green}INFO${NC} ] Downloading management scripts..."
-
 # Vmess
-wget -q -O add-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-ws.sh" && chmod +x add-ws
-wget -q -O trialvmess "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialvmess.sh" && chmod +x trialvmess
-wget -q -O renew-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-ws.sh" && chmod +x renew-ws
-wget -q -O del-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-ws.sh" && chmod +x del-ws
-wget -q -O cek-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-ws.sh" && chmod +x cek-ws
+wget -O add-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-ws.sh" && chmod +x add-ws
+wget -O trialvmess "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialvmess.sh" && chmod +x trialvmess
+wget -O renew-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-ws.sh" && chmod +x renew-ws
+wget -O del-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-ws.sh" && chmod +x del-ws
+wget -O cek-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-ws.sh" && chmod +x cek-ws
 
 # Vless
-wget -q -O add-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-vless.sh" && chmod +x add-vless
-wget -q -O trialvless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialvless.sh" && chmod +x trialvless
-wget -q -O renew-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-vless.sh" && chmod +x renew-vless
-wget -q -O del-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-vless.sh" && chmod +x del-vless
-wget -q -O cek-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-vless.sh" && chmod +x cek-vless
+wget -O add-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-vless.sh" && chmod +x add-vless
+wget -O trialvless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialvless.sh" && chmod +x trialvless
+wget -O renew-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-vless.sh" && chmod +x renew-vless
+wget -O del-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-vless.sh" && chmod +x del-vless
+wget -O cek-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-vless.sh" && chmod +x cek-vless
 
 # Trojan
-wget -q -O add-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-tr.sh" && chmod +x add-tr
-wget -q -O trialtrojan "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialtrojan.sh" && chmod +x trialtrojan
-wget -q -O del-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-tr.sh" && chmod +x del-tr
-wget -q -O renew-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-tr.sh" && chmod +x renew-tr
-wget -q -O cek-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-tr.sh" && chmod +x cek-tr
+wget -O add-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-tr.sh" && chmod +x add-tr
+wget -O trialtrojan "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialtrojan.sh" && chmod +x trialtrojan
+wget -O del-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-tr.sh" && chmod +x del-tr
+wget -O renew-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-tr.sh" && chmod +x renew-tr
+wget -O cek-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-tr.sh" && chmod +x cek-tr
 
 # Shadowsocks
-wget -q -O add-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-ssws.sh" && chmod +x add-ssws
-wget -q -O trialssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialssws.sh" && chmod +x trialssws
-wget -q -O del-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-ssws.sh" && chmod +x del-ssws
-wget -q -O renew-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-ssws.sh" && chmod +x renew-ssws
-wget -q -O cek-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-ssws.sh" && chmod +x cek-ssws
+wget -O add-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-ssws.sh" && chmod +x add-ssws
+wget -O trialssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialssws.sh" && chmod +x trialssws
+wget -O del-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-ssws.sh" && chmod +x del-ssws
+wget -O renew-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-ssws.sh" && chmod +x renew-ssws
+wget -O cek-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-ssws.sh" && chmod +x cek-ssws
 
-# Clean up
 sleep 0.5
 yellow() { echo -e "\\033[33;1m${*}\\033[0m"; }
-yellow "Xray installation complete!"
-yellow "VMess, VLess, Trojan, and Shadowsocks are ready"
+yellow "xray/Vmess"
+yellow "xray/Vless"
 
-# Move domain file
-mv /root/domain /etc/xray/ 2>/dev/null || true
+mv /root/domain /etc/xray/
 if [ -f /root/scdomain ]; then
     rm /root/scdomain > /dev/null 2>&1
 fi
-
-# Final verification
-echo -e "\n[ ${green}INFO${NC} ] Verifying services..."
-sleep 2
-
-# Check Xray
-if systemctl is-active --quiet xray; then
-    echo -e "[ ${green}✓${NC} ] Xray is running"
-else
-    echo -e "[ ${red}✗${NC} ] Xray is not running. Check: journalctl -u xray"
-fi
-
-# Check Nginx
-if systemctl is-active --quiet nginx; then
-    echo -e "[ ${green}✓${NC} ] Nginx is running"
-else
-    echo -e "[ ${red}✗${NC} ] Nginx is not running. Check: journalctl -u nginx"
-fi
-
 clear
 rm -f ins-xray.sh
