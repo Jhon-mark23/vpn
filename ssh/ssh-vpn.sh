@@ -1,26 +1,65 @@
 #!/bin/bash
 # ==================================================
-# SSH-VPN Install Script - XRAY COMPATIBLE
+# MARCSCRIPT SSH-VPN INSTALLER
+# Fixed for Ubuntu 24.04 / Debian 12
 # Optimized for 1GB RAM / 1 CPU VPS
-# Supports: SSH Direct, SSH+SSL, SSH+WS, SSH+WSS
-# Compatible with Xray (port 80/443 shared via Nginx)
+# 
+# Protocols: SSH Direct, SSH+SSL, SSH+WS, SSH+WSS
 # ==================================================
 
-set -e
+# Suppress semua dialog interaktif apt
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
+
+# Disable popup "Pending kernel upgrade" dan "Daemons using outdated libraries"
+if [ -f /etc/needrestart/needrestart.conf ]; then
+    sed -i "s/#\$nrconf{restart} = 'i';/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf 2>/dev/null || true
+    sed -i "s/#\$nrconf{kernelhints} = -1;/\$nrconf{kernelhints} = -1;/" /etc/needrestart/needrestart.conf 2>/dev/null || true
+fi
 
 # ============================================================
-# COLOR DEFINITIONS
+# COLOR DEFINITIONS - MARCSCRIPT THEME
 # ============================================================
+red='\e[1;31m'
 green='\e[0;32m'
 yell='\e[1;33m'
-red='\e[1;31m'
-blue='\e[0;34m'
+tyblue='\e[1;36m'
+BRed='\e[1;31m'
+BGreen='\e[1;32m'
+BYellow='\e[1;33m'
+BBlue='\e[1;34m'
+BPurple='\e[1;35m'
+BCyan='\e[1;36m'
+BWhite='\e[1;37m'
 NC='\e[0m'
 
-print_info()  { echo -e "[ ${green}INFO${NC} ] $1"; }
-print_error() { echo -e "[ ${red}ERROR${NC} ] $1"; }
-print_warning() { echo -e "[ ${yell}WARNING${NC} ] $1"; }
-print_success() { echo -e "[ ${green}✓${NC} ] $1"; }
+print_info() { echo -e "[ ${BGreen}✓${NC} ] $1"; }
+print_error() { echo -e "[ ${BRed}✗${NC} ] $1"; }
+print_warning() { echo -e "[ ${BYellow}⚠${NC} ] $1"; }
+print_success() { echo -e "[ ${BCyan}▶${NC} ] $1"; }
+
+# ============================================================
+# BANNER
+# ============================================================
+show_banner() {
+    clear
+    echo -e "${BPurple}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BPurple}║${BWhite}                                                          ${BPurple}║${NC}"
+    echo -e "${BPurple}║${BWhite}     ███╗   ███╗ █████╗ ██████╗  ██████╗███████╗${BPurple}║${NC}"
+    echo -e "${BPurple}║${BWhite}     ████╗ ████║██╔══██╗██╔══██╗██╔════╝██╔════╝${BPurple}║${NC}"
+    echo -e "${BPurple}║${BWhite}     ██╔████╔██║███████║██████╔╝██║     ███████╗${BPurple}║${NC}"
+    echo -e "${BPurple}║${BWhite}     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║${BPurple}║${NC}"
+    echo -e "${BPurple}║${BWhite}     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║${BPurple}║${NC}"
+    echo -e "${BPurple}║${BWhite}     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝${BPurple}║${NC}"
+    echo -e "${BPurple}║${BWhite}                                                          ${BPurple}║${NC}"
+    echo -e "${BPurple}║${BCyan}           SSH VPN INSTALLER v2.0                        ${BPurple}║${NC}"
+    echo -e "${BPurple}║${BWhite}                                                          ${BPurple}║${NC}"
+    echo -e "${BPurple}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+show_banner
 
 # ============================================================
 # DETECT OS
@@ -43,60 +82,46 @@ detect_os() {
     fi
 }
 
-# ============================================================
-# SETUP ENVIRONMENT
-# ============================================================
-setup_environment() {
-    export DEBIAN_FRONTEND=noninteractive
-    export NEEDRESTART_MODE=a
-    export NEEDRESTART_SUSPEND=1
-
-    if [ -f /etc/needrestart/needrestart.conf ]; then
-        sed -i "s/#\$nrconf{restart} = 'i';/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf 2>/dev/null || true
-        sed -i "s/#\$nrconf{kernelhints} = -1;/\$nrconf{kernelhints} = -1;/" /etc/needrestart/needrestart.conf 2>/dev/null || true
-    fi
-
-    ln -fs /usr/share/zoneinfo/Asia/Manila /etc/localtime
-    timedatectl set-timezone Asia/Manila 2>/dev/null || true
-}
+detect_os
 
 # ============================================================
 # INSTALL BASE PACKAGES
 # ============================================================
-install_base_packages() {
-    print_info "Installing base packages..."
+print_info "Updating system and installing base packages..."
 
-    apt update -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || true
-    apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || true
-    apt dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || true
+apt dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+apt install netfilter-persistent -y
+apt-get remove --purge ufw firewalld -y
+apt install -y screen curl jq bzip2 gzip vnstat coreutils rsyslog iftop zip unzip git apt-transport-https build-essential -y
 
-    apt-get remove --purge ufw firewalld exim4 -y 2>/dev/null || true
+# initializing var
+MYIP=$(wget -qO- ipv4.icanhazip.com)
+MYIP2="s/xxxxxxxxx/$MYIP/g"
+NET=$(ip -o -4 route show to default | awk '{print $5}')
+source /etc/os-release
+ver=$VERSION_ID
 
-    local packages="screen curl jq bzip2 gzip vnstat coreutils rsyslog iftop zip unzip git apt-transport-https build-essential net-tools wget gnupg gnupg2 iptables-persistent netfilter-persistent openssl ca-certificates nginx stunnel4 dropbear fail2ban"
+# detail nama perusahaan
+country=PH
+state="Metro Manila"
+locality=Manila
+organization=MarcScript
+organizationalunit=VPN
+commonname=MarcScript
+email=admin@marcscript.com
 
-    for pkg in $packages; do
-        if ! dpkg -l | grep -q "^ii  $pkg "; then
-            apt install -y $pkg -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" 2>/dev/null || {
-                print_warning "Failed to install $pkg, continuing..."
-            }
-        fi
-    done
+# simple password minimal
+curl -sS https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/password | openssl aes-256-cbc -d -a -pass pass:scvps07gg -pbkdf2 > /etc/pam.d/common-password
+chmod +x /etc/pam.d/common-password
 
-    # Python for WebSocket
-    if ! command -v python3 &>/dev/null; then
-        apt install -y python3 python3-pip >> /dev/null 2>&1 || true
-    fi
-
-    print_success "Base packages installed"
-}
+cd
 
 # ============================================================
 # SETUP RC.LOCAL
 # ============================================================
-setup_rclocal() {
-    print_info "Setting up rc.local..."
+print_info "Setting up rc.local..."
 
-    cat > /etc/systemd/system/rc-local.service <<-END
+cat > /etc/systemd/system/rc-local.service <<-END
 [Unit]
 Description=/etc/rc.local
 ConditionPathExists=/etc/rc.local
@@ -111,293 +136,225 @@ SysVStartPriority=99
 WantedBy=multi-user.target
 END
 
-    cat > /etc/rc.local <<-END
+cat > /etc/rc.local <<-END
 #!/bin/sh -e
 # rc.local
 # By default this script does nothing.
 exit 0
 END
 
-    chmod +x /etc/rc.local
-    systemctl enable rc-local 2>/dev/null || true
-    systemctl start rc-local.service 2>/dev/null || true
+chmod +x /etc/rc.local
+systemctl enable rc-local
+systemctl start rc-local.service
 
-    echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null || true
-    if ! grep -q "disable_ipv6" /etc/rc.local; then
-        sed -i '$ i\echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6' /etc/rc.local
-    fi
+# disable ipv6
+echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6
+sed -i '$ i\echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6' /etc/rc.local
 
-    print_success "rc.local configured"
-}
+# update
+apt update -y
+apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+apt dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+apt-get remove --purge ufw firewalld -y
+apt-get remove --purge exim4 -y
 
-# ============================================================
-# CONFIGURE SSH
-# ============================================================
-configure_ssh() {
-    print_info "Configuring SSH (ports 22, 9696)..."
+apt -y install jq
+apt -y install wget curl
+apt -y install net-tools
 
-    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak 2>/dev/null || true
+# set time GMT +8 (Philippines)
+ln -fs /usr/share/zoneinfo/Asia/Manila /etc/localtime
 
-    sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
-    sed -i 's/^#Port 22/Port 22/' /etc/ssh/sshd_config
-    sed -i '/^Port [0-9]/d' /etc/ssh/sshd_config
-    sed -i 's/AcceptEnv/#AcceptEnv/g' /etc/ssh/sshd_config
-
-    echo "Port 22" >> /etc/ssh/sshd_config
-    echo "Port 9696" >> /etc/ssh/sshd_config
-
-    systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
-    print_success "SSH configured on ports 22, 9696"
-}
+# set locale
+sed -i 's/AcceptEnv/#AcceptEnv/g' /etc/ssh/sshd_config
 
 # ============================================================
-# INSTALL DROPBEAR
+# INSTALL NGINX
 # ============================================================
-install_dropbear() {
-    print_info "Installing Dropbear (ports 109, 143)..."
+print_info "Installing Nginx..."
 
-    apt install -y dropbear 2>/dev/null
+apt -y install nginx
+cd
+rm -f /etc/nginx/sites-enabled/default
+rm -f /etc/nginx/sites-available/default
 
-    cat > /etc/default/dropbear <<-DROPBEAR
-NO_START=0
-DROPBEAR_PORT=109
-DROPBEAR_EXTRA_ARGS="-p 143"
-DROPBEAR_BANNER=""
-DROPBEAR_RECEIVE_WINDOW=65536
-DROPBEAR
-
-    echo "/bin/false" >> /etc/shells 2>/dev/null || true
-    echo "/usr/sbin/nologin" >> /etc/shells 2>/dev/null || true
-
-    systemctl enable dropbear 2>/dev/null || true
-    systemctl restart dropbear 2>/dev/null || true
-    print_success "Dropbear configured"
-}
+# Download optimized nginx.conf from original repo
+wget -O /etc/nginx/nginx.conf "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/nginx.conf"
+mkdir -p /home/vps/public_html
+mkdir -p /etc/nginx/conf.d
 
 # ============================================================
-# INSTALL BADVPN
+# NGINX OPTIMIZATION - Reduce worker & connections to save RAM
 # ============================================================
-install_badvpn() {
-    print_info "Installing BADVPN (ports 7100-7400)..."
+sed -i 's/worker_processes\s*auto/worker_processes 1/' /etc/nginx/nginx.conf
+sed -i 's/worker_processes\s*[0-9]*/worker_processes 1/' /etc/nginx/nginx.conf
 
-    cd /tmp
-    wget -q -O /usr/bin/badvpn-udpgw "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/newudpgw"
-    chmod +x /usr/bin/badvpn-udpgw
-
-    for port in 7100 7200 7300 7400; do
-        if ! grep -q "badvpn$((port/100))" /etc/rc.local; then
-            sed -i "\$ i\screen -dmS badvpn$((port/100)) badvpn-udpgw --listen-addr 127.0.0.1:$port --max-clients 50" /etc/rc.local
-        fi
-    done
-
-    screen -dmS badvpn1 badvpn-udpgw --listen-addr 127.0.0.1:7100 --max-clients 50 2>/dev/null || true
-    screen -dmS badvpn2 badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 50 2>/dev/null || true
-    screen -dmS badvpn3 badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 50 2>/dev/null || true
-    screen -dmS badvpn4 badvpn-udpgw --listen-addr 127.0.0.1:7400 --max-clients 50 2>/dev/null || true
-
-    print_success "BADVPN started"
-}
-
-# ============================================================
-# CONFIGURE NGINX - XRAY COMPATIBLE
-# ============================================================
-configure_nginx() {
-    print_info "Configuring Nginx (Xray compatible)..."
-
-    # Create optimized nginx.conf
-    cat > /etc/nginx/nginx.conf <<'NGINXCONF'
-user www-data;
-worker_processes 1;
-pid /var/run/nginx.pid;
-
-events {
-    multi_accept on;
-    worker_connections 1024;
-}
-
-http {
-    gzip on;
-    gzip_vary on;
-    gzip_comp_level 5;
-    gzip_types text/plain application/x-javascript text/xml text/css;
-    autoindex on;
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    types_hash_max_size 2048;
-    server_tokens off;
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    access_log /var/log/nginx/access.log;
-    error_log /var/log/nginx/error.log;
-    client_max_body_size 32M;
-    client_header_buffer_size 8m;
-    large_client_header_buffers 8 8m;
-    fastcgi_buffer_size 8m;
-    fastcgi_buffers 8 8m;
-    fastcgi_read_timeout 600;
-
-    set_real_ip_from 199.27.128.0/21;
-    set_real_ip_from 173.245.48.0/20;
-    set_real_ip_from 103.21.244.0/22;
-    set_real_ip_from 103.22.200.0/22;
-    set_real_ip_from 103.31.4.0/22;
-    set_real_ip_from 141.101.64.0/18;
-    set_real_ip_from 108.162.192.0/18;
-    set_real_ip_from 190.93.240.0/20;
-    set_real_ip_from 188.114.96.0/20;
-    set_real_ip_from 197.234.240.0/22;
-    set_real_ip_from 198.41.128.0/17;
-    set_real_ip_from 162.158.0.0/15;
-    set_real_ip_from 104.16.0.0/12;
-    set_real_ip_from 199.83.128.0/21;
-    set_real_ip_from 198.143.32.0/19;
-    set_real_ip_from 149.126.72.0/21;
-    set_real_ip_from 103.28.248.0/22;
-    set_real_ip_from 45.64.64.0/22;
-    set_real_ip_from 185.11.124.0/22;
-    set_real_ip_from 192.230.64.0/18;
-    real_ip_header CF-Connecting-IP;
-
-    include /etc/nginx/conf.d/*.conf;
-}
-NGINXCONF
-
-    rm -f /etc/nginx/sites-enabled/default
-    rm -f /etc/nginx/sites-available/default
-
-    # SSH WebSocket config (port 2095)
-    cat > /etc/nginx/conf.d/ssh-ws.conf <<'SSHCONF'
-# ============================================================
-# SSH WEBSOCKET CONFIG (ws-dropbear on 2095)
-# ============================================================
+# Create temporary nginx config so nginx can start before ins-xray.sh
+cat > /etc/nginx/conf.d/xray.conf <<-NGINXTMP
 server {
     listen 81;
     server_name _;
     root /home/vps/public_html;
     index index.html;
 }
-
 server {
     listen 80 default_server;
     server_name _;
     root /home/vps/public_html;
-
     location / {
         proxy_pass http://127.0.0.1:2095;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_buffering off;
-        proxy_redirect off;
-        proxy_read_timeout 86400;
-        proxy_send_timeout 86400;
+        proxy_set_header Host \$http_host;
     }
 }
-SSHCONF
-
-    # Placeholder for Xray (will be overwritten by ins-xray.sh)
-    cat > /etc/nginx/conf.d/xray.conf <<'XRAYPLACEHOLDER'
-# ============================================================
-# XRAY CONFIG - Managed by ins-xray.sh
-# ============================================================
-XRAYPLACEHOLDER
-
-    mkdir -p /home/vps/public_html
-
-    nginx -t 2>/dev/null || {
-        print_error "Nginx config test failed"
-        exit 1
-    }
-
-    systemctl restart nginx
-    print_success "Nginx configured (SSH on 2095, Xray on 80/443)"
-}
+NGINXTMP
+systemctl restart nginx
 
 # ============================================================
-# INSTALL STUNNEL4 - SSH OVER SSL (XRAY COMPATIBLE)
+# INSTALL BADVPN - OPTIMIZED: max-clients 50 per instance
 # ============================================================
-install_stunnel() {
-    print_info "Installing Stunnel4 (SSH SSL on ports 222, 777)..."
+print_info "Installing BADVPN (ports 7100-7400)..."
 
-    apt install -y stunnel4 2>/dev/null
+cd
+wget -O /usr/bin/badvpn-udpgw "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/newudpgw"
+chmod +x /usr/bin/badvpn-udpgw
 
-    mkdir -p /var/log/stunnel4
-    mkdir -p /etc/stunnel
-    mkdir -p /var/run/stunnel4
+sed -i '$ i\screen -dmS badvpn1 badvpn-udpgw --listen-addr 127.0.0.1:7100 --max-clients 50' /etc/rc.local
+sed -i '$ i\screen -dmS badvpn2 badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 50' /etc/rc.local
+sed -i '$ i\screen -dmS badvpn3 badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 50' /etc/rc.local
+sed -i '$ i\screen -dmS badvpn4 badvpn-udpgw --listen-addr 127.0.0.1:7400 --max-clients 50' /etc/rc.local
 
-    if ! id "stunnel4" &>/dev/null; then
-        useradd --system --no-create-home --shell /usr/sbin/nologin stunnel4 2>/dev/null || true
-    fi
+screen -dmS badvpn1 badvpn-udpgw --listen-addr 127.0.0.1:7100 --max-clients 50
+screen -dmS badvpn2 badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 50
+screen -dmS badvpn3 badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 50
+screen -dmS badvpn4 badvpn-udpgw --listen-addr 127.0.0.1:7400 --max-clients 50
 
-    chown stunnel4:stunnel4 /var/log/stunnel4 2>/dev/null || chown root:root /var/log/stunnel4
-    chown stunnel4:stunnel4 /var/run/stunnel4 2>/dev/null || chown root:root /var/run/stunnel4
-    chmod 755 /var/run/stunnel4
+cd
 
-    # Generate certificate
-    cd /tmp
-    openssl genrsa -out /tmp/stunnel-key.pem 2048 2>/dev/null
-    openssl req -new -x509 \
-        -key /tmp/stunnel-key.pem \
-        -out /tmp/stunnel-cert.pem \
-        -days 3650 \
-        -subj "/C=PH/ST=Metro Manila/L=Manila/O=SSH/CN=localhost" \
-        2>/dev/null
-    cat /tmp/stunnel-key.pem /tmp/stunnel-cert.pem > /etc/stunnel/stunnel.pem
-    chmod 600 /etc/stunnel/stunnel.pem
-    chown stunnel4:stunnel4 /etc/stunnel/stunnel.pem 2>/dev/null || true
-    rm -f /tmp/stunnel-key.pem /tmp/stunnel-cert.pem
-    cd
+# ============================================================
+# CONFIGURE SSH
+# ============================================================
+print_info "Configuring SSH (ports 22, 9696)..."
 
-    cat > /etc/stunnel/stunnel.conf <<'STUNNELCONF'
-pid = /var/run/stunnel.pid
+sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+sed -i 's/^#Port 22/Port 22/' /etc/ssh/sshd_config
+sed -i '/^Port [0-9]/d' /etc/ssh/sshd_config
+echo "Port 22" >> /etc/ssh/sshd_config
+echo "Port 9696" >> /etc/ssh/sshd_config
+systemctl restart ssh
+
+# ============================================================
+# INSTALL DROPBEAR
+# ============================================================
+print_info "Installing Dropbear (ports 109, 143)..."
+
+apt -y install dropbear
+cat > /etc/default/dropbear <<-DROPBEAR
+NO_START=0
+DROPBEAR_PORT=109
+DROPBEAR_EXTRA_ARGS="-p 143"
+DROPBEAR_BANNER=""
+DROPBEAR_RECEIVE_WINDOW=65536
+DROPBEAR
+systemctl enable dropbear
+echo "/bin/false" >> /etc/shells
+echo "/usr/sbin/nologin" >> /etc/shells
+systemctl restart ssh
+systemctl restart dropbear
+
+# ============================================================
+# INSTALL STUNNEL4 - FIXED FOR UBUNTU 24.04 / DEBIAN 12
+# ============================================================
+print_info "Installing Stunnel4 (SSH SSL on ports 222, 777)..."
+
+apt install stunnel4 -y
+
+mkdir -p /var/log/stunnel4
+mkdir -p /etc/stunnel
+mkdir -p /var/run/stunnel4
+
+if ! id "stunnel4" &>/dev/null; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin stunnel4 2>/dev/null || true
+fi
+
+chown stunnel4:stunnel4 /var/log/stunnel4 2>/dev/null || chown root:root /var/log/stunnel4
+chown stunnel4:stunnel4 /var/run/stunnel4 2>/dev/null || chown root:root /var/run/stunnel4
+chmod 755 /var/run/stunnel4
+
+# Generate SSL certificate
+cd /tmp
+openssl genrsa -out /tmp/stunnel-key.pem 2048 2>/dev/null
+openssl req -new -x509 \
+    -key /tmp/stunnel-key.pem \
+    -out /tmp/stunnel-cert.pem \
+    -days 3650 \
+    -subj "/C=$country/ST=$state/L=$locality/O=$organization/OU=$organizationalunit/CN=$commonname/emailAddress=$email" \
+    2>/dev/null
+cat /tmp/stunnel-key.pem /tmp/stunnel-cert.pem > /etc/stunnel/stunnel.pem
+chmod 600 /etc/stunnel/stunnel.pem
+chown stunnel4:stunnel4 /etc/stunnel/stunnel.pem 2>/dev/null || true
+rm -f /tmp/stunnel-key.pem /tmp/stunnel-cert.pem
+cd
+
+# Write stunnel config - compatible with Ubuntu 24.04
+cat > /etc/stunnel/stunnel.conf <<-END
+; Stunnel4 Config - MarcScript Edition
+cert = /etc/stunnel/stunnel.pem
 client = no
-output = /var/log/stunnel.log
-foreground = no
-debug = 3
-sslVersion = TLSv1.2
+socket = a:SO_REUSEADDR=1
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
+output = /var/log/stunnel4/stunnel.log
+pid = /var/run/stunnel4/stunnel4.pid
 
 [ssh-ssl]
 accept = 222
 connect = 127.0.0.1:22
-cert = /etc/stunnel/stunnel.pem
-TIMEOUTclose = 0
 
 [dropbear-ssl]
 accept = 777
 connect = 127.0.0.1:109
-cert = /etc/stunnel/stunnel.pem
-TIMEOUTclose = 0
 
 [ws-stunnel]
 accept = 2096
 connect = 127.0.0.1:700
-cert = /etc/stunnel/stunnel.pem
-TIMEOUTclose = 0
-STUNNELCONF
+END
 
-    echo 'ENABLED=1' > /etc/default/stunnel4
-    systemctl daemon-reload
-    systemctl enable stunnel4 2>/dev/null || true
-    systemctl stop stunnel4 2>/dev/null; sleep 1
-    systemctl start stunnel4 2>/dev/null || true
+cat > /etc/default/stunnel4 <<-STUNNEL
+ENABLED=1
+FILES="/etc/stunnel/*.conf"
+OPTIONS=""
+BANNER="/etc/issue.net"
+PPP_RESTART=0
+OUTPUT=/var/log/stunnel4/stunnel.log
+STUNNEL
 
-    print_success "Stunnel4 configured on ports 222, 777"
-}
+# Fix systemd for Ubuntu 24.04
+mkdir -p /etc/systemd/system/stunnel4.service.d/
+cat > /etc/systemd/system/stunnel4.service.d/override.conf <<-EOF
+[Service]
+RuntimeDirectory=stunnel4
+RuntimeDirectoryMode=0755
+ExecStartPre=/bin/mkdir -p /var/run/stunnel4
+ExecStartPre=/bin/chown stunnel4:stunnel4 /var/run/stunnel4
+EOF
+
+systemctl daemon-reload
+systemctl enable stunnel4
+systemctl stop stunnel4 2>/dev/null; sleep 1
+systemctl start stunnel4
 
 # ============================================================
-# INSTALL FAIL2BAN
+# INSTALL FAIL2BAN - OPTIMIZED
 # ============================================================
-install_fail2ban() {
-    print_info "Installing Fail2ban..."
+print_info "Installing Fail2ban..."
 
-    apt install -y fail2ban 2>/dev/null
+apt -y install fail2ban
 
-    cat > /etc/fail2ban/jail.local <<-F2B
+mkdir -p /etc/fail2ban
+cat > /etc/fail2ban/jail.local <<-F2B
 [DEFAULT]
 findtime  = 600
 bantime   = 3600
@@ -411,20 +368,19 @@ logpath   = %(sshd_log)s
 maxretry  = 5
 F2B
 
-    systemctl enable fail2ban 2>/dev/null || true
-    systemctl restart fail2ban 2>/dev/null || true
-    print_success "Fail2ban configured"
-}
+systemctl enable fail2ban
+systemctl enable nginx
+systemctl enable cron
+systemctl enable vnstat
 
 # ============================================================
-# SYSTEM OPTIMIZATION
+# KERNEL SYSCTL OPTIMIZATION
 # ============================================================
-optimize_system() {
-    print_info "Optimizing system..."
+print_info "Optimizing system..."
 
-    cat >> /etc/sysctl.conf <<-SYSCTL
+cat >> /etc/sysctl.conf <<-SYSCTL
 
-# === VPS 1GB RAM OPTIMIZATION ===
+# === MARCSCRIPT VPS 1GB RAM OPTIMIZATION ===
 vm.swappiness = 10
 vm.vfs_cache_pressure = 50
 net.core.rmem_max = 16777216
@@ -435,379 +391,198 @@ net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 fs.file-max = 51200
 SYSCTL
-    sysctl -p >/dev/null 2>&1
+sysctl -p >/dev/null 2>&1
 
-    if [ ! -f /swapfile ]; then
-        print_info "Creating 512MB swap..."
-        if command -v fallocate &> /dev/null; then
-            fallocate -l 512M /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=512 status=progress 2>/dev/null
-        else
-            dd if=/dev/zero of=/swapfile bs=1M count=512 2>/dev/null
-        fi
-        chmod 600 /swapfile
-        mkswap /swapfile 2>/dev/null
-        swapon /swapfile 2>/dev/null
-        echo '/swapfile none swap sw 0 0' >> /etc/fstab
-        print_success "Swap created"
+# ============================================================
+# ADD 512MB SWAP
+# ============================================================
+if [ ! -f /swapfile ]; then
+    if command -v fallocate &> /dev/null; then
+        fallocate -l 512M /swapfile
+    else
+        dd if=/dev/zero of=/swapfile bs=1M count=512 status=progress
     fi
-
-    print_success "System optimized"
-}
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    print_info "Swap 512MB created"
+fi
 
 # ============================================================
 # BLOCK TORRENT
 # ============================================================
-block_torrent() {
-    print_info "Blocking torrent traffic..."
+print_info "Blocking torrent traffic..."
 
-    iptables -A FORWARD -m string --string "get_peers" --algo bm -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --string "announce_peer" --algo bm -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --string "find_node" --algo bm -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "BitTorrent" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "BitTorrent protocol" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "peer_id=" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string ".torrent" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "announce.php?passkey=" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "torrent" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "announce" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "info_hash" -j DROP 2>/dev/null || true
-
-    iptables-save > /etc/iptables.up.rules 2>/dev/null || true
-    if command -v netfilter-persistent &> /dev/null; then
-        netfilter-persistent save 2>/dev/null || true
-        netfilter-persistent reload 2>/dev/null || true
-    fi
-
-    print_success "Torrent traffic blocked"
-}
+iptables -A FORWARD -m string --string "get_peers" --algo bm -j DROP
+iptables -A FORWARD -m string --string "announce_peer" --algo bm -j DROP
+iptables -A FORWARD -m string --string "find_node" --algo bm -j DROP
+iptables -A FORWARD -m string --algo bm --string "BitTorrent" -j DROP
+iptables -A FORWARD -m string --algo bm --string "BitTorrent protocol" -j DROP
+iptables -A FORWARD -m string --algo bm --string "peer_id=" -j DROP
+iptables -A FORWARD -m string --algo bm --string ".torrent" -j DROP
+iptables -A FORWARD -m string --algo bm --string "announce.php?passkey=" -j DROP
+iptables -A FORWARD -m string --algo bm --string "torrent" -j DROP
+iptables -A FORWARD -m string --algo bm --string "announce" -j DROP
+iptables -A FORWARD -m string --algo bm --string "info_hash" -j DROP
+iptables-save > /etc/iptables.up.rules
+iptables-restore -t < /etc/iptables.up.rules
+netfilter-persistent save
+netfilter-persistent reload
 
 # ============================================================
-# DOWNLOAD ALL MENU AND SSH SCRIPTS
+# DOWNLOAD MARCSCRIPT MENU SCRIPTS
 # ============================================================
-download_scripts() {
-    print_info "Downloading all menu and management scripts..."
-    
-    GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
-    cd /usr/bin || cd /usr/local/bin
+print_info "Downloading MarcScript menu scripts..."
 
-    # ============================================================
-    # MENU SCRIPTS (from menu/ folder)
-    # ============================================================
-    print_info "Downloading menu scripts..."
-    
-    wget -q -O menu "$GHBASE/menu/menu.sh" && chmod +x menu
-    wget -q -O m-sshovpn "$GHBASE/menu/m-sshovpn.sh" && chmod +x m-sshovpn
-    wget -q -O m-vmess "$GHBASE/menu/m-vmess.sh" && chmod +x m-vmess
-    wget -q -O m-vless "$GHBASE/menu/m-vless.sh" && chmod +x m-vless
-    wget -q -O m-trojan "$GHBASE/menu/m-trojan.sh" && chmod +x m-trojan
-    wget -q -O m-ssws "$GHBASE/menu/m-ssws.sh" && chmod +x m-ssws
-    wget -q -O m-system "$GHBASE/menu/m-system.sh" && chmod +x m-system
-    wget -q -O m-domain "$GHBASE/menu/m-domain.sh" && chmod +x m-domain
-    wget -q -O m-dns "$GHBASE/menu/m-dns.sh" && chmod +x m-dns
-    wget -q -O m-tcp "$GHBASE/menu/tcp.sh" && chmod +x m-tcp
-    wget -q -O running "$GHBASE/menu/running.sh" && chmod +x running
-    wget -q -O clearcache "$GHBASE/menu/clearcache.sh" && chmod +x clearcache
-    wget -q -O auto-reboot "$GHBASE/menu/auto-reboot.sh" && chmod +x auto-reboot
-    wget -q -O restart "$GHBASE/menu/restart.sh" && chmod +x restart
-    wget -q -O bw "$GHBASE/menu/bw.sh" && chmod +x bw
+GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
 
-    # ============================================================
-    # SSH MANAGEMENT SCRIPTS (from ssh/ folder)
-    # ============================================================
-    print_info "Downloading SSH management scripts..."
-    
-    wget -q -O usernew "$GHBASE/ssh/usernew.sh" && chmod +x usernew
-    wget -q -O trial "$GHBASE/ssh/trial.sh" && chmod +x trial
-    wget -q -O renew "$GHBASE/ssh/renew.sh" && chmod +x renew
-    wget -q -O hapus "$GHBASE/ssh/hapus.sh" && chmod +x hapus
-    wget -q -O cek "$GHBASE/ssh/cek.sh" && chmod +x cek
-    wget -q -O member "$GHBASE/ssh/member.sh" && chmod +x member
-    wget -q -O delete "$GHBASE/ssh/delete.sh" && chmod +x delete
-    wget -q -O autokill "$GHBASE/ssh/autokill.sh" && chmod +x autokill
-    wget -q -O ceklim "$GHBASE/ssh/ceklim.sh" && chmod +x ceklim
-    wget -q -O tendang "$GHBASE/ssh/tendang.sh" && chmod +x tendang
-    wget -q -O sshws "$GHBASE/ssh/sshws.sh" && chmod +x sshws
-    wget -q -O add-host "$GHBASE/ssh/add-host.sh" && chmod +x add-host
-    wget -q -O xp "$GHBASE/ssh/xp.sh" && chmod +x xp
-    wget -q -O fix-cek "$GHBASE/ssh/fix-cek.sh" && chmod +x fix-cek
-    wget -q -O speedtest "$GHBASE/ssh/speedtest_cli.py" && chmod +x speedtest
+cd /usr/bin
+wget -O menu        "$GHBASE/menu/menu.sh"
+wget -O m-vmess     "$GHBASE/menu/m-vmess.sh"
+wget -O m-vless     "$GHBASE/menu/m-vless.sh"
+wget -O running     "$GHBASE/menu/running.sh"
+wget -O clearcache  "$GHBASE/menu/clearcache.sh"
+wget -O m-ssws      "$GHBASE/menu/m-ssws.sh"
+wget -O m-trojan    "$GHBASE/menu/m-trojan.sh"
+wget -O m-sshovpn   "$GHBASE/menu/m-sshovpn.sh"
+wget -O usernew     "$GHBASE/ssh/usernew.sh"
+wget -O trial       "$GHBASE/ssh/trial.sh"
+wget -O renew       "$GHBASE/ssh/renew.sh"
+wget -O hapus       "$GHBASE/ssh/hapus.sh"
+wget -O cek         "$GHBASE/ssh/cek.sh"
+wget -O member      "$GHBASE/ssh/member.sh"
+wget -O delete      "$GHBASE/ssh/delete.sh"
+wget -O autokill    "$GHBASE/ssh/autokill.sh"
+wget -O ceklim      "$GHBASE/ssh/ceklim.sh"
+wget -O tendang     "$GHBASE/ssh/tendang.sh"
+wget -O sshws       "$GHBASE/ssh/sshws.sh"
+wget -O m-system    "$GHBASE/menu/m-system.sh"
+wget -O m-domain    "$GHBASE/menu/m-domain.sh"
+wget -O add-host    "$GHBASE/ssh/add-host.sh"
+wget -O certv2ray   "$GHBASE/xray/certv2ray.sh"
+wget -O speedtest   "$GHBASE/ssh/speedtest_cli.py"
+wget -O auto-reboot "$GHBASE/menu/auto-reboot.sh"
+wget -O restart     "$GHBASE/menu/restart.sh"
+wget -O bw          "$GHBASE/menu/bw.sh"
+wget -O m-tcp       "$GHBASE/menu/tcp.sh"
+wget -O xp          "$GHBASE/ssh/xp.sh"
+wget -O m-dns       "$GHBASE/menu/m-dns.sh"
+wget -O fix-cek     "$GHBASE/ssh/fix-cek.sh"
 
-    # ============================================================
-    # XRAY MANAGEMENT SCRIPTS (from xray/ folder)
-    # ============================================================
-    print_info "Downloading Xray management scripts..."
-    
-    wget -q -O add-ws "$GHBASE/xray/add-ws.sh" && chmod +x add-ws
-    wget -q -O add-vless "$GHBASE/xray/add-vless.sh" && chmod +x add-vless
-    wget -q -O add-tr "$GHBASE/xray/add-tr.sh" && chmod +x add-tr
-    wget -q -O add-ssws "$GHBASE/xray/add-ssws.sh" && chmod +x add-ssws
-    wget -q -O del-ws "$GHBASE/xray/del-ws.sh" && chmod +x del-ws
-    wget -q -O del-vless "$GHBASE/xray/del-vless.sh" && chmod +x del-vless
-    wget -q -O del-tr "$GHBASE/xray/del-tr.sh" && chmod +x del-tr
-    wget -q -O del-ssws "$GHBASE/xray/del-ssws.sh" && chmod +x del-ssws
-    wget -q -O renew-ws "$GHBASE/xray/renew-ws.sh" && chmod +x renew-ws
-    wget -q -O renew-vless "$GHBASE/xray/renew-vless.sh" && chmod +x renew-vless
-    wget -q -O renew-tr "$GHBASE/xray/renew-tr.sh" && chmod +x renew-tr
-    wget -q -O renew-ssws "$GHBASE/xray/renew-ssws.sh" && chmod +x renew-ssws
-    wget -q -O cek-ws "$GHBASE/xray/cek-ws.sh" && chmod +x cek-ws
-    wget -q -O cek-vless "$GHBASE/xray/cek-vless.sh" && chmod +x cek-vless
-    wget -q -O cek-tr "$GHBASE/xray/cek-tr.sh" && chmod +x cek-tr
-    wget -q -O cek-ssws "$GHBASE/xray/cek-ssws.sh" && chmod +x cek-ssws
-    wget -q -O trialvmess "$GHBASE/xray/trialvmess.sh" && chmod +x trialvmess
-    wget -q -O trialvless "$GHBASE/xray/trialvless.sh" && chmod +x trialvless
-    wget -q -O trialtrojan "$GHBASE/xray/trialtrojan.sh" && chmod +x trialtrojan
-    wget -q -O trialssws "$GHBASE/xray/trialssws.sh" && chmod +x trialssws
-    wget -q -O certv2ray "$GHBASE/xray/certv2ray.sh" && chmod +x certv2ray
-
-    # ============================================================
-    # ENSURE ALL SCRIPTS ARE EXECUTABLE
-    # ============================================================
-    print_info "Setting permissions for all scripts..."
-    chmod +x /usr/bin/menu 2>/dev/null || true
-    chmod +x /usr/bin/m-* 2>/dev/null || true
-    chmod +x /usr/bin/usernew /usr/bin/trial /usr/bin/renew /usr/bin/hapus 2>/dev/null || true
-    chmod +x /usr/bin/cek /usr/bin/member /usr/bin/delete /usr/bin/autokill 2>/dev/null || true
-    chmod +x /usr/bin/ceklim /usr/bin/tendang /usr/bin/sshws /usr/bin/add-host 2>/dev/null || true
-    chmod +x /usr/bin/xp /usr/bin/fix-cek /usr/bin/speedtest 2>/dev/null || true
-    chmod +x /usr/bin/add-ws /usr/bin/add-vless /usr/bin/add-tr /usr/bin/add-ssws 2>/dev/null || true
-    chmod +x /usr/bin/del-ws /usr/bin/del-vless /usr/bin/del-tr /usr/bin/del-ssws 2>/dev/null || true
-    chmod +x /usr/bin/renew-ws /usr/bin/renew-vless /usr/bin/renew-tr /usr/bin/renew-ssws 2>/dev/null || true
-    chmod +x /usr/bin/cek-ws /usr/bin/cek-vless /usr/bin/cek-tr /usr/bin/cek-ssws 2>/dev/null || true
-    chmod +x /usr/bin/trialvmess /usr/bin/trialvless /usr/bin/trialtrojan /usr/bin/trialssws 2>/dev/null || true
-    chmod +x /usr/bin/certv2ray /usr/bin/running /usr/bin/clearcache /usr/bin/auto-reboot 2>/dev/null || true
-    chmod +x /usr/bin/restart /usr/bin/bw /usr/bin/m-tcp /usr/bin/m-dns /usr/bin/m-domain 2>/dev/null || true
-
-    cd /
-    print_success "All scripts downloaded and permissions set"
-}
+chmod +x menu m-vmess m-vless running clearcache m-ssws m-trojan
+chmod +x m-sshovpn usernew trial renew hapus cek member delete autokill ceklim tendang sshws
+chmod +x m-system m-domain add-host certv2ray speedtest auto-reboot restart bw m-tcp xp m-dns fix-cek
+cd
 
 # ============================================================
 # SETUP CRON
 # ============================================================
-setup_cron() {
-    print_info "Setting up cron jobs..."
+print_info "Setting up cron jobs..."
 
-    cat > /etc/cron.d/re_otm <<-END
+cat > /etc/cron.d/re_otm <<-END
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 0 2 * * * root /sbin/reboot
 END
 
-    cat > /etc/cron.d/xp_otm <<-END
+cat > /etc/cron.d/xp_otm <<-END
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 0 0 * * * root /usr/bin/xp
 END
 
-    echo "7" > /home/re_otm
-    systemctl restart cron 2>/dev/null || true
-    print_success "Cron jobs configured"
-}
+cat > /home/re_otm <<-END
+7
+END
+
+systemctl restart cron >/dev/null 2>&1
+systemctl reload cron >/dev/null 2>&1
 
 # ============================================================
 # CLEANUP
 # ============================================================
-cleanup() {
-    print_info "Cleaning up..."
+print_info "Cleaning up..."
 
-    apt autoclean -y 2>/dev/null || true
-    apt autoremove -y 2>/dev/null || true
+apt autoclean -y >/dev/null 2>&1
+if dpkg -s unscd >/dev/null 2>&1; then
+    apt -y remove --purge unscd >/dev/null 2>&1
+fi
+apt-get -y --purge remove samba* >/dev/null 2>&1
+apt-get -y --purge remove apache2* >/dev/null 2>&1
+apt-get -y --purge remove bind9* >/dev/null 2>&1
+apt-get -y remove sendmail* >/dev/null 2>&1
+apt autoremove -y >/dev/null 2>&1
 
-    for pkg in unscd samba apache2 bind9 sendmail; do
-        dpkg -l | grep -q "^ii  $pkg " && apt-get -y --purge remove $pkg 2>/dev/null || true
-    done
-
-    chown -R www-data:www-data /home/vps/public_html 2>/dev/null || true
-
-    history -c
-    echo "unset HISTFILE" >> /etc/profile
-
-    rm -f /root/key.pem /root/cert.pem /root/ssh-vpn.sh /root/bbr.sh 2>/dev/null
-    print_success "Cleanup completed"
-}
+cd
+chown -R www-data:www-data /home/vps/public_html
 
 # ============================================================
 # RESTART SERVICES
 # ============================================================
-restart_services() {
-    print_info "Restarting all services..."
+print_info "Restarting all services..."
 
-    for service in nginx cron ssh dropbear fail2ban stunnel4 vnstat rc-local; do
-        systemctl restart $service 2>/dev/null && print_success "Restarted $service"
-    done
+systemctl restart nginx >/dev/null 2>&1 && print_info "Restarted nginx"
+systemctl restart cron >/dev/null 2>&1 && print_info "Restarted cron"
+systemctl restart ssh >/dev/null 2>&1 && print_info "Restarted ssh"
+systemctl restart dropbear >/dev/null 2>&1 && print_info "Restarted dropbear"
+systemctl restart fail2ban >/dev/null 2>&1 && print_info "Restarted fail2ban"
+systemctl restart stunnel4 >/dev/null 2>&1 && print_info "Restarted stunnel4"
+systemctl restart vnstat >/dev/null 2>&1 && print_info "Restarted vnstat"
 
-    screen -dmS badvpn1 badvpn-udpgw --listen-addr 127.0.0.1:7100 --max-clients 50 2>/dev/null || true
-    screen -dmS badvpn2 badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 50 2>/dev/null || true
-    screen -dmS badvpn3 badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 50 2>/dev/null || true
-    screen -dmS badvpn4 badvpn-udpgw --listen-addr 127.0.0.1:7400 --max-clients 50 2>/dev/null || true
-}
+screen -dmS badvpn1 badvpn-udpgw --listen-addr 127.0.0.1:7100 --max-clients 50
+screen -dmS badvpn2 badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 50
+screen -dmS badvpn3 badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 50
+screen -dmS badvpn4 badvpn-udpgw --listen-addr 127.0.0.1:7400 --max-clients 50
 
-# ============================================================
-# CREATE CONNECTION GUIDE
-# ============================================================
-create_guide() {
-    VPS_IP=$(curl -s ifconfig.me || curl -s ipv4.icanhazip.com || echo "unknown")
+history -c
+echo "unset HISTFILE" >> /etc/profile
 
-    cat > /root/ssh-connection-guide.txt <<EOF
-===========================================
-   SSH VPN CONNECTION GUIDE
-   (Xray Compatible)
-===========================================
-
-VPS IP: $VPS_IP
-
-===========================================
-1. SSH DIRECT
-===========================================
-ssh -p 22 root@$VPS_IP
-ssh -p 9696 root@$VPS_IP
-
-===========================================
-2. SSH OVER SSL (Stunnel4)
-===========================================
-ssh -o ProxyCommand="openssl s_client -connect $VPS_IP:222 -quiet" root@$VPS_IP
-ssh -o ProxyCommand="openssl s_client -connect $VPS_IP:777 -quiet" root@$VPS_IP
-
-===========================================
-3. SSH OVER WEBSOCKET (ws-dropbear)
-===========================================
-ssh -o ProxyCommand="websocat ws://$VPS_IP:80" root@$VPS_IP
-ssh -o ProxyCommand="websocat ws://$VPS_IP:2095" root@$VPS_IP
-
-===========================================
-4. SSH OVER WEBSOCKET + SSL (ws-stunnel)
-===========================================
-ssh -o ProxyCommand="websocat wss://$VPS_IP:443" root@$VPS_IP
-ssh -o ProxyCommand="websocat wss://$VPS_IP:700" root@$VPS_IP
-
-===========================================
-5. HTTP PROXY (Squid) - for Payload
-===========================================
-HTTP Proxy: $VPS_IP:3128
-
-===========================================
-MANAGEMENT
-===========================================
-menu         - Original menu
-create       - Create SSH user
-vpn-status   - Check services
-===========================================
-EOF
-
-    print_success "Connection guide saved to /root/ssh-connection-guide.txt"
-}
+rm -f /root/key.pem
+rm -f /root/cert.pem
+rm -f /root/ssh-vpn.sh
+rm -f /root/bbr.sh
 
 # ============================================================
-# CREATE VPN STATUS SCRIPT
+# FINAL OUTPUT
 # ============================================================
-create_vpn_status() {
-    cat > /usr/local/bin/vpn-status <<'EOF'
-#!/bin/bash
-echo "═══════════════════════════════════════════════════════════════"
-echo "   SSH VPN SERVICE STATUS"
-echo "═══════════════════════════════════════════════════════════════"
+clear
+show_banner
+
+echo -e "${BPurple}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BPurple}║${BGreen}              ✅ SSH VPN INSTALLATION COMPLETE!            ${BPurple}║${NC}"
+echo -e "${BPurple}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo "SSH Server      : $(systemctl is-active ssh)   (22, 9696)"
-echo "Dropbear        : $(systemctl is-active dropbear)   (109, 143)"
-echo "Stunnel4        : $(systemctl is-active stunnel4)   (222, 777)"
-echo "ws-dropbear     : $(systemctl is-active ws-dropbear)   (2095)"
-echo "ws-stunnel      : $(systemctl is-active ws-stunnel)   (700)"
-echo "Nginx           : $(systemctl is-active nginx)   (80, 443, 81)"
-echo "Fail2ban        : $(systemctl is-active fail2ban)"
-echo "BADVPN          : $(pgrep -c badvpn-udpgw || echo 0) instances (7100-7400)"
+echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BWhite}                   📡 SSH PROTOCOLS${NC}"
+echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "═══════════════════════════════════════════════════════════════"
-echo "  VPS IP: $(curl -s ifconfig.me || echo 'unknown')"
-echo "═══════════════════════════════════════════════════════════════"
+echo -e "${BGreen}   SSH Direct     :${NC} ${BYellow}22, 9696${NC}"
+echo -e "${BGreen}   SSH SSL        :${NC} ${BYellow}222, 777${NC}"
+echo -e "${BGreen}   SSH WS         :${NC} ${BYellow}80, 2095${NC}"
+echo -e "${BGreen}   SSH WSS        :${NC} ${BYellow}443, 700${NC}"
+echo -e "${BGreen}   Dropbear       :${NC} ${BYellow}109, 143${NC}"
+echo -e "${BGreen}   BADVPN         :${NC} ${BYellow}7100-7400${NC}"
 echo ""
-echo "Commands:"
-echo "  menu         - Original menu"
-echo "  create       - Create SSH user"
-echo "  vpn-status   - Show this status"
-echo "═══════════════════════════════════════════════════════════════"
-EOF
-    chmod +x /usr/local/bin/vpn-status
-    print_success "vpn-status script created"
-}
+echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BWhite}                   🔧 MANAGEMENT${NC}"
+echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "   ${BGreen}menu${NC}         - Main menu"
+echo -e "   ${BGreen}create${NC}       - Create SSH user"
+echo -e "   ${BGreen}vpn-status${NC}   - Check service status"
+echo ""
+echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BPurple}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BPurple}║${BWhite}           THANK YOU FOR USING MARCSCRIPT!              ${BPurple}║${NC}"
+echo -e "${BPurple}║${BCyan}              Enjoy your VPN Server!                       ${BPurple}║${NC}"
+echo -e "${BPurple}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
 
-# ============================================================
-# MAIN
-# ============================================================
-main() {
-    clear
-    echo ""
-    echo "==========================================="
-    echo "   SSH VPN INSTALLER (Xray Compatible)"
-    echo "==========================================="
-    echo ""
-    echo "This will install:"
-    echo "  ✅ SSH Direct (22, 9696)"
-    echo "  ✅ SSH over SSL (222, 777)"
-    echo "  ✅ SSH over WebSocket (80, 2095)"
-    echo "  ✅ SSH over WSS (443, 700)"
-    echo "  ✅ HTTP Proxy (3128) - for payload"
-    echo "  ✅ BADVPN (7100-7400)"
-    echo "  ✅ Complete menu system"
-    echo ""
-    echo "⚠️  Xray compatible - no port conflicts"
-    echo ""
-    read -p "Continue? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Installation cancelled"
-        exit 0
-    fi
-
-    detect_os
-    setup_environment
-    install_base_packages
-    setup_rclocal
-    configure_ssh
-    install_dropbear
-    install_badvpn
-    configure_nginx
-    install_stunnel
-    install_fail2ban
-    optimize_system
-    block_torrent
-    download_scripts
-    setup_cron
-    create_vpn_status
-    restart_services
-    create_guide
-    cleanup
-
-    clear
-    echo ""
-    echo "==========================================="
-    echo "   ✅ SSH-VPN INSTALLATION COMPLETE!"
-    echo "==========================================="
-    echo ""
-    echo "📡 CONNECTION METHODS:"
-    echo "   SSH Direct     : 22, 9696"
-    echo "   SSH SSL        : 222, 777"
-    echo "   SSH WS         : 80, 2095"
-    echo "   SSH WSS        : 443, 700"
-    echo "   HTTP Proxy     : 3128"
-    echo "   BADVPN         : 7100-7400"
-    echo ""
-    echo "📖 Full guide: /root/ssh-connection-guide.txt"
-    echo ""
-    echo "🔧 Management:"
-    echo "   menu         - Original menu"
-    echo "   create       - Create SSH user"
-    echo "   vpn-status   - Check services"
-    echo ""
-    echo "⚠️  Now run ins-xray.sh to install Xray"
-    echo "   (Xray will use ports 80/443 via Nginx)"
-    echo "==========================================="
-    echo ""
-
-    print_success "SSH-VPN installation completed successfully!"
-    print_info "Type 'menu' to access the management panel"
-}
-
-# ============================================================
-# RUN MAIN
-# ============================================================
-main "$@"
+echo -ne "[ ${yell}WARNING${NC} ] Reboot now ? (y/n)? "
+read answer
+if [ "$answer" == "${answer#[Yy]}" ] ;then
+exit 0
+else
+reboot
+fi
