@@ -1,14 +1,18 @@
 #!/bin/bash
 # ==================================================
-# Enhanced SSH-VPN Install Script - Xray Compatible
+# SSH VPN MULTI-PROTOCOL INSTALLER
 # Compatible with Debian & Ubuntu
 # Optimized for 1GB RAM / 1 CPU VPS
-# Features:
-#   - No conflicts with Xray/V2Ray
-#   - Full SSH protocol support
-#   - Original menu system preserved
-#   - Better error handling
-#   - Improved resource optimization
+#
+# Protocols supported:
+#   - SSH DIRECT (22, 2222)
+#   - SSH+SSL (8443 via Stunnel)
+#   - SSH+WEBSOCKET (8080 via Node.js)
+#   - SSH+WEBSOCKET+SSL (8443 via Stunnel + WebSocket)
+#   - SSH+PAYLOAD+REMOTE PROXY (Squid 3128)
+#   - SSH+SSL+PAYLOAD+REMOTE PROXY (Stunnel + Squid)
+#
+# No conflicts with Xray/V2Ray (uses non-standard ports)
 # ==================================================
 
 # ============================================================
@@ -61,18 +65,12 @@ detect_os() {
         print_error "Cannot detect OS"
         exit 1
     fi
-    
+
     print_info "Detected OS: $OS $VER"
-    
+
     if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
         print_error "This script only supports Ubuntu or Debian"
         exit 1
-    fi
-    
-    if [[ "$OS" == "ubuntu" ]]; then
-        PKG_MANAGER="apt-get"
-    elif [[ "$OS" == "debian" ]]; then
-        PKG_MANAGER="apt-get"
     fi
 }
 
@@ -83,12 +81,12 @@ setup_environment() {
     export DEBIAN_FRONTEND=noninteractive
     export NEEDRESTART_MODE=a
     export NEEDRESTART_SUSPEND=1
-    
+
     if [ -f /etc/needrestart/needrestart.conf ]; then
         sed -i "s/#\$nrconf{restart} = 'i';/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf 2>/dev/null || true
         sed -i "s/#\$nrconf{kernelhints} = -1;/\$nrconf{kernelhints} = -1;/" /etc/needrestart/needrestart.conf 2>/dev/null || true
     fi
-    
+
     ln -fs /usr/share/zoneinfo/Asia/Manila /etc/localtime
     timedatectl set-timezone Asia/Manila 2>/dev/null || true
 }
@@ -98,15 +96,15 @@ setup_environment() {
 # ============================================================
 install_base_packages() {
     print_info "Installing base packages..."
-    
+
     apt update -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || true
     apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || true
     apt dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || true
-    
+
     apt-get remove --purge ufw firewalld exim4 -y 2>/dev/null || true
-    
-    local packages="screen curl jq bzip2 gzip vnstat coreutils rsyslog iftop zip unzip git apt-transport-https build-essential net-tools wget gnupg gnupg2 iptables-persistent netfilter-persistent openssl ca-certificates nginx stunnel4 dropbear squid fail2ban"
-    
+
+    local packages="screen curl jq bzip2 gzip vnstat coreutils rsyslog iftop zip unzip git apt-transport-https build-essential net-tools wget gnupg gnupg2 iptables-persistent netfilter-persistent openssl ca-certificates stunnel4 dropbear squid fail2ban"
+
     for pkg in $packages; do
         if ! dpkg -l | grep -q "^ii  $pkg "; then
             apt install -y $pkg -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" 2>/dev/null || {
@@ -114,14 +112,14 @@ install_base_packages() {
             }
         fi
     done
-    
-    # Install Node.js for WebSocket
+
+    # Install Node.js for WebSocket proxy
     if ! command -v node &>/dev/null; then
-        print_info "Installing Node.js 20 LTS..."
+        print_info "Installing Node.js 20 LTS for WebSocket proxy..."
         curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >> /dev/null 2>&1
         apt install -y nodejs >> /dev/null 2>&1 || true
     fi
-    
+
     check_success "Base packages installed"
 }
 
@@ -130,7 +128,7 @@ install_base_packages() {
 # ============================================================
 setup_rclocal() {
     print_info "Setting up rc.local..."
-    
+
     cat > /etc/systemd/system/rc-local.service <<-END
 [Unit]
 Description=/etc/rc.local
@@ -156,68 +154,39 @@ END
     chmod +x /etc/rc.local
     systemctl enable rc-local 2>/dev/null || true
     systemctl start rc-local.service 2>/dev/null || true
-    
+
     echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null || true
     if ! grep -q "disable_ipv6" /etc/rc.local; then
         sed -i '$ i\echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6' /etc/rc.local
     fi
-    
+
     check_success "rc.local configured"
 }
 
 # ============================================================
-# CONFIGURE SSH - MODERN CRYPTO (Xray Compatible)
+# CONFIGURE SSH (DIRECT PORTS: 22, 2222)
 # ============================================================
 configure_ssh() {
-    print_info "Configuring SSH with modern crypto..."
-    
+    print_info "Configuring SSH (ports 22, 2222)..."
+
     cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak 2>/dev/null || true
-    
-    # Add modern crypto and extra ports (non-conflicting with Xray)
-    cat >> /etc/ssh/sshd_config <<'EOF'
 
-# ============================================================
-# SSH-VPN CONFIG - XRAY COMPATIBLE
-# ============================================================
+    # Ensure port 22 is enabled
+    sed -i 's/#Port 22/Port 22/' /etc/ssh/sshd_config
+    if ! grep -q "^Port 2222" /etc/ssh/sshd_config; then
+        echo "Port 2222" >> /etc/ssh/sshd_config
+    fi
 
-# Extra ports (non-conflicting with Xray)
-Port 9696
-Port 2222
+    # Basic settings
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
-# Modern Crypto - Fixes "Cannot negotiate" error
-KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256
+    echo "SSH VPN Server - Multi Protocol" > /etc/ssh/ssh_banner
+    if ! grep -q "Banner" /etc/ssh/sshd_config; then
+        echo "Banner /etc/ssh/ssh_banner" >> /etc/ssh/sshd_config
+    fi
 
-HostKeyAlgorithms ssh-ed25519-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp256-cert-v01@openssh.com,rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,ssh-ed25519,ecdsa-sha2-nistp521,ecdsa-sha2-nistp384,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256
-
-Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes128-ctr
-
-MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,umac-128@openssh.com
-
-ClientAliveInterval 60
-ClientAliveCountMax 3
-MaxAuthTries 5
-MaxSessions 100
-LoginGraceTime 60
-
-Banner /etc/ssh/ssh_banner
-EOF
-
-    cat > /etc/ssh/ssh_banner <<EOF
-=============================================
-   SSH VPN SERVER (Xray Compatible)
-   Ports: 22, 9696, 2222
-   SSL: 8443, 8444
-   WebSocket: 8080, 8082
-   WSS: 8445
-   Payload: 8880, 8888
-   HTTP Proxy: 3128, 8082, 8888
-=============================================
-EOF
-
-    # Generate host keys
-    ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N "" 2>/dev/null || true
-    ssh-keygen -t ecdsa -f /etc/ssh/ssh_host_ecdsa_key -N "" 2>/dev/null || true
-
+    # Validate
     sshd -t >> /dev/null 2>&1 || {
         print_error "SSH config test failed"
         cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
@@ -225,18 +194,19 @@ EOF
     }
 
     systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
-    check_success "SSH configured on ports 22, 9696, 2222"
+    systemctl enable ssh 2>/dev/null || true
+
+    check_success "SSH configured on ports 22, 2222"
 }
 
 # ============================================================
-# INSTALL DROPBEAR
+# INSTALL DROPBEAR (OPTIONAL)
 # ============================================================
 install_dropbear() {
-    print_info "Installing Dropbear..."
-    
+    print_info "Installing Dropbear (alternative SSH)..."
     apt install -y dropbear 2>/dev/null
     check_success "Dropbear installation"
-    
+
     cat > /etc/default/dropbear <<-DROPBEAR
 NO_START=0
 DROPBEAR_PORT=109
@@ -244,278 +214,276 @@ DROPBEAR_EXTRA_ARGS="-p 143"
 DROPBEAR_BANNER=""
 DROPBEAR_RECEIVE_WINDOW=65536
 DROPBEAR
-    
+
     echo "/bin/false" >> /etc/shells 2>/dev/null || true
     echo "/usr/sbin/nologin" >> /etc/shells 2>/dev/null || true
-    
+
     systemctl enable dropbear 2>/dev/null || true
     systemctl restart dropbear 2>/dev/null || true
     check_success "Dropbear configured"
 }
 
 # ============================================================
-# INSTALL BADVPN
+# INSTALL BADVPN (UDP GATEWAY)
 # ============================================================
 install_badvpn() {
-    print_info "Installing BADVPN..."
-    
+    print_info "Installing BADVPN UDP gateway..."
     cd /tmp
     wget -q -O /usr/bin/badvpn-udpgw "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/newudpgw"
     chmod +x /usr/bin/badvpn-udpgw
     check_success "BADVPN installed"
-    
+
     for port in 7100 7200 7300 7400; do
         if ! grep -q "badvpn$((port/100))" /etc/rc.local; then
             sed -i "\$ i\screen -dmS badvpn$((port/100)) badvpn-udpgw --listen-addr 127.0.0.1:$port --max-clients 50" /etc/rc.local
         fi
     done
-    
+
     screen -dmS badvpn1 badvpn-udpgw --listen-addr 127.0.0.1:7100 --max-clients 50 2>/dev/null || true
     screen -dmS badvpn2 badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 50 2>/dev/null || true
     screen -dmS badvpn3 badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 50 2>/dev/null || true
     screen -dmS badvpn4 badvpn-udpgw --listen-addr 127.0.0.1:7400 --max-clients 50 2>/dev/null || true
-    
+
     check_success "BADVPN started"
 }
 
 # ============================================================
-# INSTALL & CONFIGURE NGINX (Xray Compatible)
+# CONFIGURE SQUID (HTTP PROXY FOR PAYLOAD / REMOTE PROXY)
 # ============================================================
-install_nginx() {
-    print_info "Installing Nginx (Xray compatible)..."
-    
-    apt install -y nginx 2>/dev/null
-    check_success "Nginx installation"
-    
-    rm -f /etc/nginx/sites-enabled/default 2>/dev/null
-    rm -f /etc/nginx/sites-available/default 2>/dev/null
-    
-    # Don't overwrite existing Xray config
-    if [ ! -f /etc/nginx/conf.d/xray.conf ]; then
-        # Create default if Xray not present
-        cat > /etc/nginx/conf.d/xray.conf <<-NGINXTMP
-server {
-    listen 81;
-    server_name _;
-    root /home/vps/public_html;
-    index index.html;
-}
-NGINXTMP
-    else
-        print_info "Xray config detected, preserving it"
-    fi
-    
-    # Create SSH WebSocket config (separate file, no conflict)
-    cat > /etc/nginx/conf.d/ssh-ws.conf <<-'EOF'
-# ============================================================
-# SSH WEBSOCKET + PAYLOAD PROXY (Xray Compatible)
-# ============================================================
+configure_squid() {
+    print_info "Configuring Squid HTTP proxy on port 3128..."
+    apt install -y squid 2>/dev/null
 
-# WebSocket Proxy (SSH over WS) - Port 8080
-server {
-    listen 8080;
-    listen [::]:8080;
-    server_name _;
-    
-    location / {
-        proxy_pass http://127.0.0.1:22;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_buffering off;
-        proxy_redirect off;
-        proxy_read_timeout 86400;
-        proxy_send_timeout 86400;
-    }
-}
+    [ -f /etc/squid/squid.conf ] && cp /etc/squid/squid.conf /etc/squid/squid.conf.bak
 
-# WebSocket Proxy (SSH over WS) - Port 8082
-server {
-    listen 8082;
-    listen [::]:8082;
-    server_name _;
-    
-    location / {
-        proxy_pass http://127.0.0.1:22;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header User-Agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-        proxy_buffering off;
-        proxy_redirect off;
-        proxy_read_timeout 86400;
-        proxy_send_timeout 86400;
-    }
-}
-
-# Payload Proxy (HTTP Tunnel) - Port 8880
-server {
-    listen 8880;
-    listen [::]:8880;
-    server_name _;
-    
-    location / {
-        proxy_pass http://127.0.0.1:22;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header User-Agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-        proxy_set_header Accept-Encoding "gzip, deflate, br";
-        proxy_set_header Accept-Language "en-US,en;q=0.9";
-        proxy_buffering off;
-        proxy_redirect off;
-        proxy_read_timeout 86400;
-        proxy_send_timeout 86400;
-    }
-}
-
-# Payload SSL Proxy (HTTPS Tunnel) - Port 8888
-server {
-    listen 8888 ssl;
-    listen [::]:8888 ssl;
-    server_name _;
-    
-    ssl_certificate /etc/stunnel/stunnel.pem;
-    ssl_certificate_key /etc/stunnel/stunnel.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    
-    location / {
-        proxy_pass http://127.0.0.1:22;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header User-Agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-        proxy_buffering off;
-        proxy_redirect off;
-        proxy_read_timeout 86400;
-        proxy_send_timeout 86400;
-    }
-}
-
-# Nginx status page (non-conflicting port)
-server {
-    listen 8081;
-    listen [::]:8081;
-    server_name _;
-    root /usr/share/nginx/html;
-    location / {
-        return 200 "SSH VPN + Xray Running";
-        add_header Content-Type text/plain;
-    }
-}
+    cat > /etc/squid/squid.conf <<EOF
+http_port 3128
+acl all src 0.0.0.0/0
+http_access allow all
+cache_dir ufs /var/spool/squid 100 16 256
+cache_mem 64 MB
+forwarded_for off
+request_header_access X-Forwarded-For deny all
+visible_hostname localhost
+dns_nameservers 8.8.8.8 1.1.1.1
 EOF
 
-    # Optimize nginx
-    sed -i 's/worker_processes\s*auto/worker_processes 1/' /etc/nginx/nginx.conf
-    sed -i 's/worker_connections\s*[0-9]*/worker_connections 512/' /etc/nginx/nginx.conf
-    
-    mkdir -p /home/vps/public_html
-    
-    nginx -t >> /dev/null 2>&1 || {
-        print_error "Nginx config test failed"
-        exit 1
-    }
-    
-    systemctl restart nginx 2>/dev/null || true
-    check_success "Nginx configured (Xray config preserved)"
+    mkdir -p /var/spool/squid
+    chown -R proxy:proxy /var/spool/squid 2>/dev/null || true
+    squid -z >> /dev/null 2>&1 || true
+
+    systemctl enable squid
+    systemctl restart squid
+    check_success "Squid proxy on port 3128"
 }
 
 # ============================================================
-# INSTALL STUNNEL4 (Non-conflicting ports)
+# CONFIGURE STUNNEL4 (SSH+SSL ON PORT 8443)
 # ============================================================
-install_stunnel() {
-    print_info "Installing Stunnel4 (non-conflicting ports)..."
-    
+configure_stunnel() {
+    print_info "Configuring Stunnel4 (SSH over SSL) on port 8443..."
     apt install -y stunnel4 2>/dev/null
-    check_success "Stunnel4 installation"
-    
-    mkdir -p /var/log/stunnel4
-    mkdir -p /etc/stunnel
-    mkdir -p /var/run/stunnel4
-    
+
+    mkdir -p /var/log/stunnel4 /etc/stunnel /var/run/stunnel4
+
     if ! id "stunnel4" &>/dev/null; then
         useradd --system --no-create-home --shell /usr/sbin/nologin stunnel4 2>/dev/null || true
     fi
-    
+
     chown stunnel4:stunnel4 /var/log/stunnel4 2>/dev/null || chown root:root /var/log/stunnel4
     chown stunnel4:stunnel4 /var/run/stunnel4 2>/dev/null || chown root:root /var/run/stunnel4
     chmod 755 /var/run/stunnel4
-    
+
+    # Generate self-signed cert
     cd /tmp
     openssl genrsa -out /tmp/stunnel-key.pem 2048 2>/dev/null
     openssl req -new -x509 \
         -key /tmp/stunnel-key.pem \
         -out /tmp/stunnel-cert.pem \
         -days 3650 \
-        -subj "/C=PH/ST=Metro Manila/L=Manila/O=VPN/CN=localhost" \
+        -subj "/C=PH/ST=Metro Manila/L=Manila/O=SSH-VPN/CN=localhost" \
         2>/dev/null
     cat /tmp/stunnel-key.pem /tmp/stunnel-cert.pem > /etc/stunnel/stunnel.pem
     chmod 600 /etc/stunnel/stunnel.pem
     chown stunnel4:stunnel4 /etc/stunnel/stunnel.pem 2>/dev/null || true
     rm -f /tmp/stunnel-key.pem /tmp/stunnel-cert.pem
     cd
-    
-    # Use non-conflicting ports (8443, 8444, 8445)
-    cat > /etc/stunnel/stunnel.conf <<-END
-; Stunnel4 Config - Xray Compatible (ports 8443, 8444, 8445)
-cert = /etc/stunnel/stunnel.pem
+
+    cat > /etc/stunnel/stunnel.conf <<END
+pid = /var/run/stunnel.pid
 client = no
-socket = a:SO_REUSEADDR=1
-socket = l:TCP_NODELAY=1
-socket = r:TCP_NODELAY=1
-output = /var/log/stunnel4/stunnel.log
-pid = /var/run/stunnel4/stunnel4.pid
+output = /var/log/stunnel.log
+foreground = no
+debug = 3
+sslVersion = TLSv1.2
+options = NO_SSLv2
+options = NO_SSLv3
+options = NO_TLSv1
+options = NO_TLSv1.1
 
 [ssh-ssl]
 accept = 8443
 connect = 127.0.0.1:22
-
-[ssh-ssl-alt]
-accept = 8444
-connect = 127.0.0.1:22
+cert = /etc/stunnel/stunnel.pem
+TIMEOUTclose = 0
 
 [ws-ssl]
-accept = 8445
+accept = 8444
 connect = 127.0.0.1:8080
+cert = /etc/stunnel/stunnel.pem
+TIMEOUTclose = 0
 END
-    
-    cat > /etc/default/stunnel4 <<-STUNNEL
-ENABLED=1
-FILES="/etc/stunnel/*.conf"
-OPTIONS=""
-BANNER="/etc/issue.net"
-PPP_RESTART=0
-OUTPUT=/var/log/stunnel4/stunnel.log
-STUNNEL
-    
+
+    sed -i 's/ENABLED=0/ENABLED=1/' /etc/default/stunnel4
+
     mkdir -p /etc/systemd/system/stunnel4.service.d/
-    cat > /etc/systemd/system/stunnel4.service.d/override.conf <<-EOF
+    cat > /etc/systemd/system/stunnel4.service.d/override.conf <<EOF
 [Service]
 RuntimeDirectory=stunnel4
 RuntimeDirectoryMode=0755
 ExecStartPre=/bin/mkdir -p /var/run/stunnel4
 ExecStartPre=/bin/chown stunnel4:stunnel4 /var/run/stunnel4
 EOF
-    
+
     systemctl daemon-reload
     systemctl enable stunnel4 2>/dev/null || true
-    systemctl stop stunnel4 2>/dev/null; sleep 1
-    systemctl start stunnel4 2>/dev/null || true
-    
-    check_success "Stunnel4 configured on ports 8443, 8444, 8445"
+    systemctl restart stunnel4 2>/dev/null || {
+        print_error "Failed to start Stunnel4"
+        exit 1
+    }
+
+    check_success "Stunnel4 configured on ports 8443 (SSH+SSL) and 8444 (WS+SSL)"
+}
+
+# ============================================================
+# CONFIGURE WEBSOCKET PROXY (ws-proxy.js) - PORT 8080
+# ============================================================
+configure_websocket() {
+    print_info "Configuring WebSocket proxy (ws-proxy.js) on port 8080..."
+
+    mkdir -p /opt/ws-proxy
+
+    cat > /opt/ws-proxy/ws-proxy.js <<'EOF'
+#!/usr/bin/env node
+const net = require('net');
+const http = require('http');
+const fs = require('fs');
+
+const SSH_HOST = '127.0.0.1';
+const SSH_PORT = 22;
+const WS_PORT = 8080;
+const LOG_FILE = '/var/log/ws-proxy.log';
+
+function log(msg) {
+    const ts = new Date().toISOString();
+    const line = `[${ts}] ${msg}\n`;
+    console.log(line.trim());
+    fs.appendFileSync(LOG_FILE, line, { flag: 'a' });
+}
+
+log('Starting SSH WebSocket Proxy on port ' + WS_PORT);
+
+const server = http.createServer();
+
+// Handle HTTP CONNECT method (for proxy)
+server.on('connect', (req, clientSocket) => {
+    log('CONNECT: ' + req.url);
+    const ssh = net.connect(SSH_PORT, SSH_HOST, () => {
+        clientSocket.write('HTTP/1.1 200 Connection Established\r\nProxy-Agent: SSH-WS-Proxy\r\n\r\n');
+        ssh.pipe(clientSocket);
+        clientSocket.pipe(ssh);
+    });
+    ssh.on('error', (e) => { log('SSH error: ' + e.message); clientSocket.destroy(); });
+    clientSocket.on('error', (e) => { log('Socket error: ' + e.message); ssh.destroy(); });
+});
+
+// Handle WebSocket upgrade
+server.on('upgrade', (req, socket) => {
+    log('WebSocket upgrade from ' + req.headers.host);
+    const ssh = net.connect(SSH_PORT, SSH_HOST, () => {
+        socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n');
+        ssh.pipe(socket);
+        socket.pipe(ssh);
+    });
+    ssh.on('error', (e) => { log('WS SSH error: ' + e.message); socket.destroy(); });
+    socket.on('error', (e) => { log('Socket error: ' + e.message); ssh.destroy(); });
+});
+
+// HTTP status page
+server.on('request', (req, res) => {
+    if (req.url === '/' || req.url === '/status') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(
+            '<html><head><title>SSH WebSocket Proxy</title></head>' +
+            '<body><h1>🚀 SSH WebSocket Proxy</h1>' +
+            '<p>Status: Running</p>' +
+            '<p>Uptime: ' + Math.floor(process.uptime()) + 's</p>' +
+            '<p>SSH Host: ' + SSH_HOST + ':' + SSH_PORT + '</p>' +
+            '<hr><small>Multi-Protocol SSH VPN</small></body></html>'
+        );
+    } else {
+        res.writeHead(404);
+        res.end('Not Found');
+    }
+});
+
+server.listen(WS_PORT, '0.0.0.0', () => {
+    log('✅ WebSocket proxy listening on port ' + WS_PORT);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    log('SIGTERM received, shutting down...');
+    server.close(() => process.exit(0));
+});
+
+process.on('SIGINT', () => {
+    log('SIGINT received, shutting down...');
+    server.close(() => process.exit(0));
+});
+
+process.on('uncaughtException', (e) => {
+    log('Uncaught exception: ' + e.message);
+});
+EOF
+
+    chmod +x /opt/ws-proxy/ws-proxy.js
+
+    # Create systemd service
+    cat > /etc/systemd/system/ws-proxy.service <<EOF
+[Unit]
+Description=SSH WebSocket Proxy
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/ws-proxy/ws-proxy.js
+Restart=always
+RestartSec=5
+User=root
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable ws-proxy 2>/dev/null || true
+    systemctl start ws-proxy 2>/dev/null || {
+        print_error "Failed to start WebSocket proxy"
+        exit 1
+    }
+
+    sleep 2
+    if systemctl is-active --quiet ws-proxy; then
+        check_success "WebSocket proxy running on port 8080"
+    else
+        print_error "WebSocket proxy failed to start"
+        journalctl -u ws-proxy -n 10
+        exit 1
+    fi
 }
 
 # ============================================================
@@ -523,12 +491,10 @@ EOF
 # ============================================================
 install_fail2ban() {
     print_info "Installing Fail2ban..."
-    
     apt install -y fail2ban 2>/dev/null
     check_success "Fail2ban installation"
-    
-    mkdir -p /etc/fail2ban
-    cat > /etc/fail2ban/jail.local <<-F2B
+
+    cat > /etc/fail2ban/jail.local <<F2B
 [DEFAULT]
 findtime  = 600
 bantime   = 3600
@@ -537,11 +503,11 @@ backend   = polling
 
 [sshd]
 enabled   = true
-port      = ssh,9696,2222,8443,8444,8445
+port      = ssh,2222,8443,8444,8080
 logpath   = %(sshd_log)s
 maxretry  = 5
 F2B
-    
+
     systemctl enable fail2ban 2>/dev/null || true
     systemctl restart fail2ban 2>/dev/null || true
     check_success "Fail2ban configured"
@@ -552,9 +518,7 @@ F2B
 # ============================================================
 optimize_system() {
     print_info "Optimizing system..."
-    
-    cat > /etc/sysctl.d/99-vpn-optimization.conf <<-SYSCTL
-# === VPS 1GB RAM OPTIMIZATION ===
+    cat > /etc/sysctl.d/99-vpn-optimization.conf <<SYSCTL
 vm.swappiness = 10
 vm.vfs_cache_pressure = 50
 net.core.rmem_max = 16777216
@@ -566,9 +530,9 @@ net.ipv4.tcp_congestion_control = bbr
 fs.file-max = 51200
 net.ipv4.tcp_fastopen = 3
 SYSCTL
-    
+
     sysctl -p /etc/sysctl.d/99-vpn-optimization.conf 2>/dev/null || true
-    
+
     if [ ! -f /swapfile ]; then
         print_info "Creating 512MB swap..."
         if command -v fallocate &> /dev/null; then
@@ -582,14 +546,14 @@ SYSCTL
         echo '/swapfile none swap sw 0 0' >> /etc/fstab
         print_success "Swap created"
     fi
-    
-    cat > /etc/security/limits.d/99-vpn.conf <<-LIMITS
+
+    cat > /etc/security/limits.d/99-vpn.conf <<LIMITS
 * soft nofile 51200
 * hard nofile 51200
 root soft nofile 51200
 root hard nofile 51200
 LIMITS
-    
+
     check_success "System optimized"
 }
 
@@ -598,7 +562,6 @@ LIMITS
 # ============================================================
 block_torrent() {
     print_info "Blocking torrent traffic..."
-    
     iptables -A FORWARD -m string --string "get_peers" --algo bm -j DROP 2>/dev/null || true
     iptables -A FORWARD -m string --string "announce_peer" --algo bm -j DROP 2>/dev/null || true
     iptables -A FORWARD -m string --string "find_node" --algo bm -j DROP 2>/dev/null || true
@@ -610,26 +573,24 @@ block_torrent() {
     iptables -A FORWARD -m string --algo bm --string "torrent" -j DROP 2>/dev/null || true
     iptables -A FORWARD -m string --algo bm --string "announce" -j DROP 2>/dev/null || true
     iptables -A FORWARD -m string --algo bm --string "info_hash" -j DROP 2>/dev/null || true
-    
+
     if command -v netfilter-persistent &> /dev/null; then
         netfilter-persistent save 2>/dev/null || true
         netfilter-persistent reload 2>/dev/null || true
     elif command -v iptables-save &> /dev/null; then
         iptables-save > /etc/iptables.up.rules 2>/dev/null || true
     fi
-    
     check_success "Torrent traffic blocked"
 }
 
 # ============================================================
-# DOWNLOAD MANAGEMENT SCRIPTS (ORIGINAL MENU PRESERVED)
+# DOWNLOAD ORIGINAL MENU SCRIPTS
 # ============================================================
 download_scripts() {
-    print_info "Downloading management scripts (original menu)..."
-    
+    print_info "Downloading original menu scripts..."
     GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
     cd /usr/bin
-    
+
     declare -A scripts=(
         ["menu"]="$GHBASE/menu/menu.sh"
         ["m-vmess"]="$GHBASE/menu/m-vmess.sh"
@@ -663,7 +624,7 @@ download_scripts() {
         ["m-dns"]="$GHBASE/menu/m-dns.sh"
         ["fix-cek"]="$GHBASE/ssh/fix-cek.sh"
     )
-    
+
     for script in "${!scripts[@]}"; do
         url="${scripts[$script]}"
         if wget --timeout=10 --tries=3 -q -O "$script" "$url" 2>/dev/null; then
@@ -682,7 +643,7 @@ download_scripts() {
             fi
         fi
     done
-    
+
     cd /
     print_success "Management scripts downloaded"
 }
@@ -692,21 +653,13 @@ download_scripts() {
 # ============================================================
 setup_cron() {
     print_info "Setting up cron jobs..."
-    
-    cat > /etc/cron.d/re_otm <<-END
+    cat > /etc/cron.d/re_otm <<END
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 0 2 * * * root /sbin/reboot
 END
 
-    cat > /etc/cron.d/xp_otm <<-END
-SHELL=/bin/sh
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-0 0 * * * root /usr/bin/xp
-END
-
     echo "7" > /home/re_otm
-    
     systemctl restart cron 2>/dev/null || systemctl restart cronie 2>/dev/null || true
     check_success "Cron jobs configured"
 }
@@ -716,26 +669,19 @@ END
 # ============================================================
 cleanup() {
     print_info "Cleaning up..."
-    
     apt autoclean -y 2>/dev/null || true
     apt autoremove -y 2>/dev/null || true
-    
+
     for pkg in unscd samba apache2 bind9 sendmail; do
         if dpkg -l | grep -q "^ii  $pkg "; then
             apt-get -y --purge remove $pkg 2>/dev/null || true
         fi
     done
-    
-    chown -R www-data:www-data /home/vps/public_html 2>/dev/null || true
-    
+
     history -c
     echo "unset HISTFILE" >> /etc/profile
-    
-    rm -f /root/key.pem 2>/dev/null
-    rm -f /root/cert.pem 2>/dev/null
-    rm -f /root/ssh-vpn.sh 2>/dev/null
-    rm -f /root/bbr.sh 2>/dev/null
-    
+
+    rm -f /root/key.pem /root/cert.pem /root/ssh-vpn.sh /root/bbr.sh 2>/dev/null
     check_success "Cleanup completed"
 }
 
@@ -744,26 +690,14 @@ cleanup() {
 # ============================================================
 restart_services() {
     print_info "Restarting all services..."
-    
-    services=(
-        "nginx"
-        "cron"
-        "ssh"
-        "dropbear"
-        "fail2ban"
-        "stunnel4"
-        "vnstat"
-        "rc-local"
-    )
-    
-    for service in "${services[@]}"; do
+    for service in ssh dropbear stunnel4 ws-proxy squid fail2ban vnstat rc-local cron; do
         if systemctl restart $service 2>/dev/null; then
             print_success "Restarted $service"
         else
             print_warning "Failed to restart $service"
         fi
     done
-    
+
     for port in 7100 7200 7300 7400; do
         screen -dmS badvpn$((port/100)) badvpn-udpgw --listen-addr 127.0.0.1:$port --max-clients 50 2>/dev/null || true
     done
@@ -774,54 +708,167 @@ restart_services() {
 # ============================================================
 create_guide() {
     VPS_IP=$(curl -s ifconfig.me || curl -s ipv4.icanhazip.com || echo "unknown")
-    
-    cat > /root/ssh-connection-guide.txt <<EOF
+    cat > /root/ssh-vpn-guide.txt <<EOF
 ===========================================
-   SSH VPN CONNECTION GUIDE (Xray Compatible)
+   SSH VPN CONNECTION GUIDE
+   (Xray/V2Ray Compatible)
 ===========================================
 
 VPS IP: $VPS_IP
 
 ===========================================
-HTTP PROXY (Squid)
+1. SSH DIRECT
 ===========================================
-HTTP Proxy: $VPS_IP:3128
-HTTP Proxy: $VPS_IP:8082
-HTTP Proxy: $VPS_IP:8888
+   Port 22 or 2222
+   ssh -p 22 root@$VPS_IP
+   ssh -p 2222 root@$VPS_IP
 
 ===========================================
-MANAGEMENT COMMANDS
+2. SSH OVER SSL (Stunnel)
 ===========================================
-menu         - Main menu (original)
-create       - Create SSH user
-vpn-status   - Check service status
-ssh-test     - Test all connections
+   Port 8443
+   ssh -o ProxyCommand="openssl s_client -connect $VPS_IP:8443 -quiet" root@$VPS_IP
+
+===========================================
+3. SSH OVER WEBSOCKET (WS)
+===========================================
+   Port 8080
+   ssh -o ProxyCommand="websocat ws://$VPS_IP:8080" root@$VPS_IP
+
+===========================================
+4. SSH OVER WEBSOCKET + SSL (WSS)
+===========================================
+   Port 8444 (Stunnel on top of WebSocket)
+   ssh -o ProxyCommand="openssl s_client -connect $VPS_IP:8444 -quiet" root@$VPS_IP
+   or use websocat wss://$VPS_IP:8444
+
+===========================================
+5. SSH + PAYLOAD + REMOTE PROXY (HTTP Injector / KPN)
+===========================================
+   Proxy: HTTP
+   Proxy Host: $VPS_IP
+   Proxy Port: 3128
+   SSH Host: $VPS_IP
+   SSH Port: 22 or 2222
+   Payload: custom (client-side)
+
+===========================================
+6. SSH + SSL + PAYLOAD + REMOTE PROXY
+===========================================
+   SSH Host: $VPS_IP
+   SSH Port: 8443 (SSL)
+   Proxy: HTTP $VPS_IP:3128
+   SSL enabled
+
+===========================================
+MANAGEMENT
+===========================================
+   menu         - Original menu
+   create       - Create SSH user
+   vpn-status   - Check services
+   wsproxy      - Manage WebSocket proxy (start|stop|restart|status|logs)
+
+===========================================
+SERVICE MANAGEMENT
+===========================================
+   systemctl status ssh        - SSH status
+   systemctl status stunnel4   - SSL status
+   systemctl status ws-proxy   - WebSocket status
+   systemctl status squid      - HTTP proxy status
+
+   # WebSocket proxy commands
+   wsproxy start|stop|restart|status|logs
+
 ===========================================
 EOF
-
-    print_success "Connection guide created at /root/ssh-connection-guide.txt"
+    print_success "Connection guide saved to /root/ssh-vpn-guide.txt"
 }
 
 # ============================================================
-# MAIN EXECUTION
+# CREATE WS-PROXY MANAGEMENT SCRIPT
+# ============================================================
+create_wsproxy_script() {
+    cat > /usr/local/bin/wsproxy <<'EOF'
+#!/bin/bash
+case "$1" in
+    start|stop|restart|status)
+        systemctl $1 ws-proxy
+        ;;
+    logs)
+        journalctl -u ws-proxy -f
+        ;;
+    kill)
+        fuser -k 8080/tcp 2>/dev/null
+        echo "WebSocket proxy killed on port 8080"
+        ;;
+    *)
+        echo "Usage: wsproxy {start|stop|restart|status|logs|kill}"
+        echo ""
+        echo "  start   - Start WebSocket proxy"
+        echo "  stop    - Stop WebSocket proxy"
+        echo "  restart - Restart WebSocket proxy"
+        echo "  status  - Check WebSocket proxy status"
+        echo "  logs    - View WebSocket proxy logs"
+        echo "  kill    - Force kill on port 8080"
+        ;;
+esac
+EOF
+    chmod +x /usr/local/bin/wsproxy
+    print_success "WebSocket proxy management script created (wsproxy)"
+}
+
+# ============================================================
+# CREATE VPN-STATUS SCRIPT
+# ============================================================
+create_vpn_status() {
+    cat > /usr/local/bin/vpn-status <<'EOF'
+#!/bin/bash
+echo "═══════════════════════════════════════════════════════════════"
+echo "   SSH VPN SERVICE STATUS"
+echo "═══════════════════════════════════════════════════════════════"
+echo ""
+echo "SSH Server      : $(systemctl is-active ssh)   (22, 2222)"
+echo "Stunnel4        : $(systemctl is-active stunnel4)   (8443, 8444)"
+echo "WebSocket Proxy : $(systemctl is-active ws-proxy)   (8080)"
+echo "Squid Proxy     : $(systemctl is-active squid)   (3128)"
+echo "Fail2ban        : $(systemctl is-active fail2ban)"
+echo "Dropbear        : $(systemctl is-active dropbear)   (109, 143)"
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+echo "  VPS IP: $(curl -s ifconfig.me || echo 'unknown')"
+echo "═══════════════════════════════════════════════════════════════"
+echo ""
+echo "Commands:"
+echo "  menu         - Original menu"
+echo "  create       - Create SSH user"
+echo "  wsproxy      - Manage WebSocket proxy"
+echo "  vpn-status   - Show this status"
+echo "═══════════════════════════════════════════════════════════════"
+EOF
+    chmod +x /usr/local/bin/vpn-status
+    print_success "VPN status script created (vpn-status)"
+}
+
+# ============================================================
+# MAIN
 # ============================================================
 main() {
     clear
     echo ""
     echo "==========================================="
-    echo "   SSH VPN INSTALLER (Xray Compatible)"
-    echo "   Full Protocol Support"
+    echo "   SSH VPN MULTI-PROTOCOL INSTALLER"
+    echo "   (Xray/V2Ray Compatible)"
     echo "==========================================="
     echo ""
     echo "Protocols to be installed:"
-    echo "  ✅ SSH Direct (22, 9696, 2222)"
-    echo "  ✅ SSH Over SSL (8443, 8444)"
-    echo "  ✅ SSH Over WebSocket (8080, 8082)"
-    echo "  ✅ SSH Over WebSocket + SSL (8445)"
-    echo "  ✅ SSH Payload Proxy (8880, 8888)"
-    echo "  ✅ HTTP Proxy (3128, 8082, 8888)"
+    echo "  ✅ SSH Direct       : 22, 2222"
+    echo "  ✅ SSH Over SSL     : 8443 (Stunnel)"
+    echo "  ✅ SSH Over WebSocket: 8080 (ws-proxy.js)"
+    echo "  ✅ SSH WebSocket SSL: 8444 (Stunnel + WS)"
+    echo "  ✅ HTTP Proxy       : 3128 (Squid) – for Payload + Remote Proxy"
+    echo "  ✅ SSH + SSL + Proxy: client-side chaining"
     echo ""
-    echo "⚠️  Xray compatible - no port conflicts"
+    echo "⚠️  No conflicts with Xray (Xray uses 80, 443, 81, etc.)"
     echo ""
     read -p "Continue? (y/N): " -n 1 -r
     echo
@@ -829,9 +876,7 @@ main() {
         echo "Installation cancelled"
         exit 0
     fi
-    
-    print_info "Starting SSH-VPN installation (Xray compatible)..."
-    
+
     detect_os
     setup_environment
     install_base_packages
@@ -839,17 +884,20 @@ main() {
     configure_ssh
     install_dropbear
     install_badvpn
-    install_nginx
-    install_stunnel
+    configure_squid
+    configure_stunnel
+    configure_websocket
     install_fail2ban
     optimize_system
     block_torrent
     download_scripts
     setup_cron
+    create_wsproxy_script
+    create_vpn_status
     restart_services
     create_guide
     cleanup
-    
+
     clear
     echo ""
     echo "==========================================="
@@ -858,24 +906,22 @@ main() {
     echo "==========================================="
     echo ""
     echo "📡 CONNECTION METHODS:"
+    echo "   SSH Direct     : 22, 2222"
+    echo "   SSH SSL        : 8443"
+    echo "   SSH WebSocket  : 8080"
+    echo "   SSH WSS        : 8444"
+    echo "   HTTP Proxy     : 3128 (Squid)"
     echo ""
-    echo "   SSH Direct     : 22, 9696, 2222"
-    echo "   SSH SSL        : 8443, 8444"
-    echo "   SSH WS         : 8080, 8082"
-    echo "   SSH WSS        : 8445"
-    echo "   SSH Payload    : 8880, 8888"
-    echo "   HTTP Proxy     : 3128, 8082, 8888"
-    echo ""
-    echo "📖 Full guide: /root/ssh-connection-guide.txt"
+    echo "📖 Full guide: /root/ssh-vpn-guide.txt"
     echo ""
     echo "🔧 Management:"
     echo "   menu         - Original menu"
     echo "   create       - Create SSH user"
+    echo "   wsproxy      - Manage WebSocket proxy"
     echo "   vpn-status   - Check services"
     echo ""
     echo "==========================================="
     echo ""
-    
     print_success "SSH-VPN installation completed successfully!"
     print_info "Type 'menu' to access the management panel"
 }
