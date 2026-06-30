@@ -488,7 +488,7 @@ block_torrent() {
 }
 
 # ============================================================
-# DOWNLOAD MANAGEMENT SCRIPTS
+# DOWNLOAD MANAGEMENT SCRIPTS - FIXED VERSION
 # ============================================================
 download_scripts() {
     print_info "Downloading management scripts..."
@@ -496,54 +496,72 @@ download_scripts() {
     GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
     cd /usr/bin
     
-    scripts=(
-        "menu:m${GHBASE}/menu/menu.sh"
-        "m-vmess:${GHBASE}/menu/m-vmess.sh"
-        "m-vless:${GHBASE}/menu/m-vless.sh"
-        "running:${GHBASE}/menu/running.sh"
-        "clearcache:${GHBASE}/menu/clearcache.sh"
-        "m-ssws:${GHBASE}/menu/m-ssws.sh"
-        "m-trojan:${GHBASE}/menu/m-trojan.sh"
-        "m-sshovpn:${GHBASE}/menu/m-sshovpn.sh"
-        "usernew:${GHBASE}/ssh/usernew.sh"
-        "trial:${GHBASE}/ssh/trial.sh"
-        "renew:${GHBASE}/ssh/renew.sh"
-        "hapus:${GHBASE}/ssh/hapus.sh"
-        "cek:${GHBASE}/ssh/cek.sh"
-        "member:${GHBASE}/ssh/member.sh"
-        "delete:${GHBASE}/ssh/delete.sh"
-        "autokill:${GHBASE}/ssh/autokill.sh"
-        "ceklim:${GHBASE}/ssh/ceklim.sh"
-        "tendang:${GHBASE}/ssh/tendang.sh"
-        "sshws:${GHBASE}/ssh/sshws.sh"
-        "m-system:${GHBASE}/menu/m-system.sh"
-        "m-domain:${GHBASE}/menu/m-domain.sh"
-        "add-host:${GHBASE}/ssh/add-host.sh"
-        "certv2ray:${GHBASE}/xray/certv2ray.sh"
-        "speedtest:${GHBASE}/ssh/speedtest_cli.py"
-        "auto-reboot:${GHBASE}/menu/auto-reboot.sh"
-        "restart:${GHBASE}/menu/restart.sh"
-        "bw:${GHBASE}/menu/bw.sh"
-        "m-tcp:${GHBASE}/menu/tcp.sh"
-        "xp:${GHBASE}/ssh/xp.sh"
-        "m-dns:${GHBASE}/menu/m-dns.sh"
-        "fix-cek:${GHBASE}/ssh/fix-cek.sh"
+    # Define scripts with proper URLs
+    declare -A scripts=(
+        ["menu"]="$GHBASE/menu/menu.sh"
+        ["m-vmess"]="$GHBASE/menu/m-vmess.sh"
+        ["m-vless"]="$GHBASE/menu/m-vless.sh"
+        ["running"]="$GHBASE/menu/running.sh"
+        ["clearcache"]="$GHBASE/menu/clearcache.sh"
+        ["m-ssws"]="$GHBASE/menu/m-ssws.sh"
+        ["m-trojan"]="$GHBASE/menu/m-trojan.sh"
+        ["m-sshovpn"]="$GHBASE/menu/m-sshovpn.sh"
+        ["usernew"]="$GHBASE/ssh/usernew.sh"
+        ["trial"]="$GHBASE/ssh/trial.sh"
+        ["renew"]="$GHBASE/ssh/renew.sh"
+        ["hapus"]="$GHBASE/ssh/hapus.sh"
+        ["cek"]="$GHBASE/ssh/cek.sh"
+        ["member"]="$GHBASE/ssh/member.sh"
+        ["delete"]="$GHBASE/ssh/delete.sh"
+        ["autokill"]="$GHBASE/ssh/autokill.sh"
+        ["ceklim"]="$GHBASE/ssh/ceklim.sh"
+        ["tendang"]="$GHBASE/ssh/tendang.sh"
+        ["sshws"]="$GHBASE/ssh/sshws.sh"
+        ["m-system"]="$GHBASE/menu/m-system.sh"
+        ["m-domain"]="$GHBASE/menu/m-domain.sh"
+        ["add-host"]="$GHBASE/ssh/add-host.sh"
+        ["certv2ray"]="$GHBASE/xray/certv2ray.sh"
+        ["speedtest"]="$GHBASE/ssh/speedtest_cli.py"
+        ["auto-reboot"]="$GHBASE/menu/auto-reboot.sh"
+        ["restart"]="$GHBASE/menu/restart.sh"
+        ["bw"]="$GHBASE/menu/bw.sh"
+        ["m-tcp"]="$GHBASE/menu/tcp.sh"
+        ["xp"]="$GHBASE/ssh/xp.sh"
+        ["m-dns"]="$GHBASE/menu/m-dns.sh"
+        ["fix-cek"]="$GHBASE/ssh/fix-cek.sh"
     )
     
-    for script in "${scripts[@]}"; do
-        name="${script%%:*}"
-        url="${script##*:}"
-        wget -q -O "$name" "$url" && chmod +x "$name"
-        if [ $? -eq 0 ]; then
-            print_info "Downloaded: $name"
+    # Download each script with error checking
+    for script in "${!scripts[@]}"; do
+        url="${scripts[$script]}"
+        print_info "Downloading: $script"
+        
+        # Use wget with retry and timeout
+        if wget --timeout=10 --tries=3 -q -O "$script" "$url" 2>/dev/null; then
+            chmod +x "$script"
+            print_success "Downloaded: $script"
         else
-            print_warning "Failed to download: $name"
+            print_warning "Failed to download: $script"
+            # Try alternative URL format
+            alt_url="https://raw.githubusercontent.com/Jhon-mark23/vpn/main/${url#*$GHBASE/}"
+            print_info "Trying alternative URL: $alt_url"
+            if wget --timeout=10 --tries=2 -q -O "$script" "$alt_url" 2>/dev/null; then
+                chmod +x "$script"
+                print_success "Downloaded: $script (alternative)"
+            else
+                print_warning "Failed to download: $script (both attempts)"
+                # Create placeholder script
+                echo "#!/bin/bash" > "$script"
+                echo "echo 'Script $script not available'" >> "$script"
+                chmod +x "$script"
+            fi
         fi
     done
     
     cd /
-    check_success "Management scripts downloaded"
+    print_success "Management scripts download completed"
 }
+
 
 # ============================================================
 # SETUP CRON
