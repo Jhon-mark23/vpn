@@ -1,14 +1,13 @@
 #!/bin/bash
 # ============================================================
 # ENHANCED XRAY INSTALLATION SCRIPT
-# SMART CERTIFICATE HANDLING - NO CONFLICTS
+# NO CERTIFICATE CONFLICT WITH STUNNEL4
 # 
 # Features:
-#   - Tries Let's Encrypt (skips if rate-limited)
-#   - Falls back to Stunnel4 certificate
-#   - Shares certificate between Xray and Stunnel4
-#   - Self-signed as last resort
+#   - Shares certificate with Stunnel4
 #   - No acme.sh rate limit issues
+#   - One certificate for all services
+#   - Improved error handling
 # ============================================================
 
 MYIP=$(wget -qO- ipv4.icanhazip.com)
@@ -123,64 +122,16 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
 check_success "Xray installation"
 
 # ============================================================
-# SMART SSL CERTIFICATE HANDLING
-# Strategy: Try Let's Encrypt → Stunnel4 → Self-signed
+# SSL CERTIFICATE - SHARED WITH STUNNEL4 (NO CONFLICT)
 # ============================================================
-echo -e "[ ${green}INFO${NC} ] Setting up SSL certificate..."
+echo -e "[ ${green}INFO${NC} ] Setting up SSL certificate (shared with Stunnel4)..."
 
 systemctl stop nginx 2>/dev/null || true
-mkdir -p /root/.acme.sh
-
-CERT_ISSUED=false
-CERT_SOURCE=""
 
 # ============================================================
-# METHOD 1: Try Let's Encrypt (skip if rate-limited)
+# OPTION 1: Use Existing Stunnel4 Certificate
 # ============================================================
-echo -e "[ ${green}INFO${NC} ] Attempting Let's Encrypt certificate..."
-
-# Install acme.sh
-if [ ! -f /root/.acme.sh/acme.sh ]; then
-    curl -s https://get.acme.sh | sh -s email=admin@$domain >/dev/null 2>&1 || {
-        curl -s https://acme-install.netlify.app/acme.sh -o /root/.acme.sh/acme.sh
-        chmod +x /root/.acme.sh/acme.sh
-    }
-fi
-
-/root/.acme.sh/acme.sh --upgrade --auto-upgrade >/dev/null 2>&1
-/root/.acme.sh/acme.sh --set-default-ca --server letsencrypt >/dev/null 2>&1
-
-# Try standalone method
-echo -e "[ ${green}INFO${NC} ] Trying standalone method..."
-/root/.acme.sh/acme.sh --issue -d $domain --standalone -k ec-256 2>&1 | grep -v "Skip" | grep -v "Already" || true
-
-if [ -f /root/.acme.sh/${domain}_ecc/${domain}.cer ]; then
-    CERT_ISSUED=true
-    CERT_SOURCE="Let's Encrypt"
-    ~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc 2>/dev/null
-    echo -e "[ ${green}SUCCESS${NC} ] Let's Encrypt certificate issued"
-fi
-
-# Try webroot if standalone failed
-if [ "$CERT_ISSUED" = false ]; then
-    echo -e "[ ${yell}WARNING${NC} ] Standalone failed, trying webroot method..."
-    mkdir -p /home/vps/public_html
-    systemctl start nginx 2>/dev/null || true
-    /root/.acme.sh/acme.sh --issue -d $domain --webroot /home/vps/public_html -k ec-256 2>&1 | grep -v "Skip" | grep -v "Already" || true
-    systemctl stop nginx 2>/dev/null || true
-    
-    if [ -f /root/.acme.sh/${domain}_ecc/${domain}.cer ]; then
-        CERT_ISSUED=true
-        CERT_SOURCE="Let's Encrypt"
-        ~/.acme.sh/acme.sh --installcert -d $domain --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc 2>/dev/null
-        echo -e "[ ${green}SUCCESS${NC} ] Let's Encrypt certificate issued (webroot)"
-    fi
-fi
-
-# ============================================================
-# METHOD 2: Use Stunnel4 Certificate (if available)
-# ============================================================
-if [ "$CERT_ISSUED" = false ] && [ -f /etc/stunnel/stunnel.pem ]; then
+if [ -f /etc/stunnel/stunnel.pem ]; then
     echo -e "[ ${green}INFO${NC} ] Using existing Stunnel4 certificate..."
     
     # Extract certificate and key from Stunnel PEM
@@ -188,19 +139,22 @@ if [ "$CERT_ISSUED" = false ] && [ -f /etc/stunnel/stunnel.pem ]; then
     openssl rsa -in /etc/stunnel/stunnel.pem -out /etc/xray/xray.key 2>/dev/null
     
     if [ -f /etc/xray/xray.crt ] && [ -f /etc/xray/xray.key ]; then
-        CERT_ISSUED=true
-        CERT_SOURCE="Stunnel4"
-        echo -e "[ ${green}SUCCESS${NC} ] Certificate copied from Stunnel4"
+        check_success "Certificate copied from Stunnel4"
+    else
+        echo -e "[ ${yell}WARNING${NC} ] Failed to extract certificate, generating new one..."
+        CERT_ISSUED=false
     fi
+else
+    CERT_ISSUED=false
 fi
 
 # ============================================================
-# METHOD 3: Generate Self-Signed Certificate (Fallback)
+# OPTION 2: Generate New Shared Certificate
 # ============================================================
-if [ "$CERT_ISSUED" = false ]; then
-    echo -e "[ ${yell}WARNING${NC} ] All certificate methods failed. Generating self-signed..."
+if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
+    echo -e "[ ${green}INFO${NC} ] Generating new certificate (will be shared with Stunnel4)..."
     
-    # Generate certificate with SAN
+    # Generate certificate with SAN (Subject Alternative Name)
     cat > /tmp/openssl.cnf <<'EOF'
 [req]
 default_bits = 2048
@@ -226,8 +180,10 @@ DNS.1 = DOMAIN_PLACEHOLDER
 DNS.2 = *.DOMAIN_PLACEHOLDER
 EOF
 
+    # Replace domain placeholder
     sed -i "s/DOMAIN_PLACEHOLDER/$domain/g" /tmp/openssl.cnf
     
+    # Generate certificate with SAN
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /etc/xray/xray.key \
         -out /etc/xray/xray.crt \
@@ -238,36 +194,26 @@ EOF
     
     # If SAN fails, fallback to simple
     if [ ! -f /etc/xray/xray.crt ]; then
+        echo -e "[ ${yell}WARNING${NC} ] SAN generation failed, using simple certificate..."
         openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -keyout /etc/xray/xray.key -out /etc/xray/xray.crt \
             -subj "/C=PH/ST=Metro Manila/L=Manila/O=VPN/CN=$domain" 2>/dev/null
     fi
     
+    # Copy to Stunnel4 so they share the same certificate
     if [ -f /etc/xray/xray.crt ] && [ -f /etc/xray/xray.key ]; then
-        CERT_ISSUED=true
-        CERT_SOURCE="Self-Signed"
-        echo -e "[ ${green}SUCCESS${NC} ] Self-signed certificate created"
-    fi
-fi
-
-# ============================================================
-# SHARE CERTIFICATE WITH STUNNEL4 (if Stunnel4 exists)
-# ============================================================
-if [ "$CERT_ISSUED" = true ] && [ -f /etc/xray/xray.crt ] && [ -f /etc/xray/xray.key ]; then
-    # Share with Stunnel4
-    if [ -d /etc/stunnel ]; then
         echo -e "[ ${green}INFO${NC} ] Sharing certificate with Stunnel4..."
         cat /etc/xray/xray.crt /etc/xray/xray.key > /etc/stunnel/stunnel.pem
         chmod 600 /etc/stunnel/stunnel.pem
         chown stunnel4:stunnel4 /etc/stunnel/stunnel.pem 2>/dev/null || true
+        
+        # Restart Stunnel4 to use new certificate
         systemctl restart stunnel4 2>/dev/null || true
-        echo -e "[ ${green}SUCCESS${NC} ] Certificate shared with Stunnel4"
+        
+        check_success "Certificate generated and shared with Stunnel4"
     fi
 fi
 
-# ============================================================
-# FINAL VERIFICATION & PERMISSIONS
-# ============================================================
 # Set proper permissions
 chmod 600 /etc/xray/xray.crt /etc/xray/xray.key 2>/dev/null || true
 chown www-data:www-data /etc/xray/xray.crt /etc/xray/xray.key 2>/dev/null || true
@@ -279,32 +225,7 @@ if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
     exit 1
 fi
 
-echo -e "[ ${green}SUCCESS${NC} ] Certificate setup complete (Source: $CERT_SOURCE)"
-
-# ============================================================
-# SSL RENEWAL SCRIPT (only for Let's Encrypt)
-# ============================================================
-if [ "$CERT_SOURCE" = "Let's Encrypt" ]; then
-    cat > /usr/local/bin/ssl_renew.sh << 'EOF'
-#!/bin/bash
-systemctl stop nginx 2>/dev/null
-"/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" &> /root/renew_ssl.log
-# Copy renewed certificate to Stunnel4
-if [ -f /etc/xray/xray.crt ] && [ -f /etc/xray/xray.key ]; then
-    cat /etc/xray/xray.crt /etc/xray/xray.key > /etc/stunnel/stunnel.pem 2>/dev/null
-    chmod 600 /etc/stunnel/stunnel.pem
-    systemctl restart stunnel4 2>/dev/null
-fi
-systemctl start nginx 2>/dev/null
-systemctl restart xray 2>/dev/null
-EOF
-    chmod +x /usr/local/bin/ssl_renew.sh
-
-    if ! grep -q 'ssl_renew.sh' /var/spool/cron/crontabs/root 2>/dev/null; then
-        (crontab -l 2>/dev/null; echo "15 03 */3 * * /usr/local/bin/ssl_renew.sh") | crontab - 2>/dev/null
-    fi
-    echo -e "[ ${green}SUCCESS${NC} ] Auto-renewal configured"
-fi
+check_success "Certificate setup complete"
 
 # ============================================================
 # Generate UUID
@@ -890,15 +811,6 @@ else
     echo -e "[ ${red}✗${NC} ] Stunnel4 is not running. Check: journalctl -u stunnel4"
     systemctl restart stunnel4 2>/dev/null || true
 fi
-
-# Show certificate source
-echo ""
-echo -e "[ ${green}INFO${NC} ] Certificate Source: $CERT_SOURCE"
-echo -e "[ ${green}INFO${NC} ] Certificate Location: /etc/xray/xray.crt & /etc/xray/xray.key"
-if [ -f /etc/stunnel/stunnel.pem ]; then
-    echo -e "[ ${green}INFO${NC} ] Stunnel4 uses same certificate: /etc/stunnel/stunnel.pem"
-fi
-echo ""
 
 clear
 rm -f ins-xray.sh
