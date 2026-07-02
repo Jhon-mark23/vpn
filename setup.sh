@@ -4,7 +4,7 @@
 # All-in-One VPN Solution for Debian & Ubuntu
 # 
 # Order:
-#   1. Secure SSH & domain config
+#   1. Domain config
 #   2. Create unified certificate (create-cert.sh)
 #   3. Install SSH‑VPN (ssh-vpn.sh)
 #   4. Install Python WS proxy (insshws.sh)
@@ -93,7 +93,7 @@ clean_old_services() {
     rm -rf /etc/stunnel/* 2>/dev/null || true
     rm -rf /etc/xray 2>/dev/null || true
     rm -rf /etc/v2ray 2>/dev/null || true
-    rm -rf /var/log/xray 2>/dev/null || true
+    rm -var/log/xray 2>/dev/null || true
     rm -rf /opt/ws-proxy 2>/dev/null || true
     rm -rf /root/.acme.sh 2>/dev/null || true
     
@@ -116,40 +116,6 @@ clean_old_services() {
     print_success "Old services cleaned"
 }
 
-secure_ssh() {
-    print_info "Securing SSH access (port 22 with password auth)..."
-    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak 2>/dev/null || true
-    cat > /etc/ssh/sshd_config <<'EOF'
-Port 22
-Port 9696
-PasswordAuthentication yes
-PermitRootLogin yes
-PubkeyAuthentication yes
-ChallengeResponseAuthentication no
-UsePAM yes
-PermitEmptyPasswords no
-MaxAuthTries 5
-MaxSessions 10
-LoginGraceTime 60
-ClientAliveInterval 60
-ClientAliveCountMax 3
-UseDNS no
-PrintMotd no
-X11Forwarding no
-Banner /etc/ssh/ssh_banner
-Subsystem sftp /usr/lib/openssh/sftp-server
-EOF
-    cat > /etc/ssh/ssh_banner <<'EOF'
-=========================================
-   MARCSCRIPT SSH VPN SERVER
-   Secure Remote Access
-   Ports: 22, 9696
-=========================================
-EOF
-    systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
-    print_success "SSH secured"
-}
-
 # ============================================================
 # MAIN
 # ============================================================
@@ -165,11 +131,9 @@ fi
 show_banner
 detect_os
 clean_old_services
-secure_ssh
 
 # Domain setup - DO NOT delete domain files prematurely
 clear
-# REMOVED: rm -rf setup.sh ... and domain file deletions from here
 
 CDN="https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ssh"
 cd /root
@@ -250,8 +214,8 @@ while true; do
 
     # Check for previous domain
     PREVIOUS_DOMAIN=""
-    if [ -f /root/domain ]; then
-        PREVIOUS_DOMAIN=$(cat /root/domain 2>/dev/null)
+    if [ -f /root/domain.txt ]; then
+        PREVIOUS_DOMAIN=$(cat /root/domain.txt 2>/dev/null)
     fi
 
     if [ -n "$PREVIOUS_DOMAIN" ]; then
@@ -266,8 +230,7 @@ while true; do
 
     if [[ "$dns" == "1" ]]; then
         # ---- Random Domain ----
-        # Cleanup old domain files before setting a new one
-        rm -f /root/domain /root/scdomain /etc/xray/domain /etc/xray/scdomain /etc/v2ray/domain /var/lib/ipvps.conf 2>/dev/null || true
+        rm -f /root/domain.txt /root/domain /root/scdomain /etc/xray/domain /etc/xray/scdomain /etc/v2ray/domain /var/lib/ipvps.conf 2>/dev/null || true
         clear
         show_banner
         echo -e "[ ${BGreen}✓ INFO${NC} ] Generating random domain..."
@@ -280,7 +243,7 @@ while true; do
 
     elif [[ "$dns" == "2" ]]; then
         # ---- Custom Domain ----
-        rm -f /root/domain /root/scdomain /etc/xray/domain /etc/xray/scdomain /etc/v2ray/domain /var/lib/ipvps.conf 2>/dev/null || true
+        rm -f /root/domain.txt /root/domain /root/scdomain /etc/xray/domain /etc/xray/scdomain /etc/v2ray/domain /var/lib/ipvps.conf 2>/dev/null || true
         read -rp " Enter Your Domain : " dom
         dom="${dom//[[:space:]]/}"
         if [ -z "$dom" ]; then
@@ -294,6 +257,7 @@ while true; do
         echo "$dom" > /etc/xray/domain
         echo "$dom" > /etc/v2ray/domain
         echo "$dom" > /root/domain
+        echo "$dom" > /root/domain.txt
         echo "IP=$dom" > /var/lib/ipvps.conf
         echo -e "[ ${BGreen}✓ SUCCESS${NC} ] Custom Domain Setup Complete"
         break
@@ -311,9 +275,8 @@ while true; do
             echo -e "${BRed}╚══════════════════════════════════════════════════════════════╝${NC}"
             echo ""
             sleep 2
-            continue   # Loop back to the menu
+            continue
         fi
-        # Reuse the domain – write it to all necessary files
         mkdir -p /etc/xray /etc/v2ray
         echo "$PREVIOUS_DOMAIN" > /root/scdomain
         echo "$PREVIOUS_DOMAIN" > /etc/xray/scdomain
@@ -423,7 +386,7 @@ echo -e "${BWhite}                   📡 SERVICE & PORTS${NC}"
 echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "${BGreen}   SSH & VPN Services:${NC}"
-echo -e "   ├─ OpenSSH                  : ${BYellow}22, 9696${NC}"
+echo -e "   ├─ OpenSSH                  : ${BYellow}22, 80${NC}"
 echo -e "   ├─ SSH Websocket            : ${BYellow}80 (via Nginx → ws-dropbear:2095)${NC}"
 echo -e "   ├─ SSH SSL Websocket        : ${BYellow}443${NC}"
 echo -e "   ├─ Stunnel4                 : ${BYellow}222, 777${NC}"
@@ -457,7 +420,7 @@ echo -e "${BWhite}                   🔐 SECURITY NOTES${NC}"
 echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "   ${BGreen}✓${NC} SSH Password Authentication: ${BYellow}Enabled${NC}"
-echo -e "   ${BGreen}✓${NC} SSH Port: ${BYellow}22, 9696${NC}"
+echo -e "   ${BGreen}✓${NC} SSH Port: ${BYellow}22, 80${NC}"
 echo -e "   ${BGreen}✓${NC} Root Login: ${BYellow}Allowed${NC}"
 echo ""
 echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
