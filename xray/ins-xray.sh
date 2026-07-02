@@ -63,6 +63,7 @@ if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
     echo -e "[ ${yell}WARNING${NC} ] Xray certificate not found in /etc/xray/"
     if [ -f /usr/local/bin/create-cert.sh ]; then
         echo -e "[ ${green}INFO${NC} ] Running create-cert.sh to obtain certificate..."
+        sed -i 's/\r$//' /usr/local/bin/create-cert.sh   # fix line endings
         bash /usr/local/bin/create-cert.sh
     else
         echo -e "[ ${yell}WARNING${NC} ] create-cert.sh not found. Generating self-signed fallback..."
@@ -123,8 +124,19 @@ chmod 755 /var/log/xray
 touch /var/log/xray/access.log /var/log/xray/error.log /var/log/xray/access2.log /var/log/xray/error2.log 2>/dev/null
 chown www-data.www-data /var/log/xray/*.log 2>/dev/null || true
 
+# Install Xray binary
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data
 check_success "Xray installation"
+
+# Verify binary exists, if not force reinstall
+if [ ! -f /usr/local/bin/xray ]; then
+    echo -e "[ ${yell}WARNING${NC} ] Xray binary missing, trying again..."
+    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data --force
+    if [ ! -f /usr/local/bin/xray ]; then
+        echo -e "[ ${red}ERROR${NC} ] Xray installation failed. Please install manually."
+        exit 1
+    fi
+fi
 
 # ---- Generate UUID ----
 uuid=$(cat /proc/sys/kernel/random/uuid)
@@ -423,7 +435,7 @@ Restart=on-abort
 WantedBy=multi-user.target
 EOF
 
-# ---- Nginx Config ----
+# ---- Nginx Config (with maximum TLS compatibility) ----
 echo -e "[ ${green}INFO${NC} ] Creating nginx configuration..."
 
 cat > /etc/nginx/conf.d/xray.conf <<'EOF'
@@ -499,8 +511,9 @@ server {
     server_name *.$domain;
     ssl_certificate /etc/xray/xray.crt;
     ssl_certificate_key /etc/xray/xray.key;
-    ssl_ciphers EECDH+CHACHA20:EECDH+CHACHA20-draft:EECDH+ECDSA+AES128:EECDH+aRSA+AES128:RSA+AES128:EECDH+ECDSA+AES256:EECDH+aRSA+AES256:RSA+AES256:EECDH+ECDSA+3DES:EECDH+aRSA+3DES:RSA+3DES:!MD5;
-    ssl_protocols TLSv1.1 TLSv1.2 TLSv1.3;
+    # Wide cipher/protocol list for old Android/VPN apps
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
+    ssl_ciphers DEFAULT:!aNULL:!eNULL:!LOW:!MD5:!EXP:!RC4;
     root /home/vps/public_html;
 
     location = /vmess {
@@ -608,37 +621,40 @@ fi
 systemctl enable runn 2>/dev/null || true
 systemctl restart runn 2>/dev/null || true
 
-# ---- Download management scripts ----
+# ---- Download management scripts (with CRLF fix) ----
 cd /usr/bin/
 echo -e "[ ${green}INFO${NC} ] Downloading management scripts..."
 
-# Vmess
-wget -q -O add-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-ws.sh" && chmod +x add-ws
-wget -q -O trialvmess "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialvmess.sh" && chmod +x trialvmess
-wget -q -O renew-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-ws.sh" && chmod +x renew-ws
-wget -q -O del-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-ws.sh" && chmod +x del-ws
-wget -q -O cek-ws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-ws.sh" && chmod +x cek-ws
+# Helper to download, fix line endings and make executable
+dl() {
+    wget -q -O "$1" "$2" && chmod +x "$1" && sed -i 's/\r$//' "$1"
+}
 
-# Vless
-wget -q -O add-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-vless.sh" && chmod +x add-vless
-wget -q -O trialvless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialvless.sh" && chmod +x trialvless
-wget -q -O renew-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-vless.sh" && chmod +x renew-vless
-wget -q -O del-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-vless.sh" && chmod +x del-vless
-wget -q -O cek-vless "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-vless.sh" && chmod +x cek-vless
+BASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray"
 
-# Trojan
-wget -q -O add-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-tr.sh" && chmod +x add-tr
-wget -q -O trialtrojan "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialtrojan.sh" && chmod +x trialtrojan
-wget -q -O del-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-tr.sh" && chmod +x del-tr
-wget -q -O renew-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-tr.sh" && chmod +x renew-tr
-wget -q -O cek-tr "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-tr.sh" && chmod +x cek-tr
+dl add-ws         "$BASE/add-ws.sh"
+dl trialvmess     "$BASE/trialvmess.sh"
+dl renew-ws       "$BASE/renew-ws.sh"
+dl del-ws         "$BASE/del-ws.sh"
+dl cek-ws         "$BASE/cek-ws.sh"
 
-# Shadowsocks
-wget -q -O add-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/add-ssws.sh" && chmod +x add-ssws
-wget -q -O trialssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/trialssws.sh" && chmod +x trialssws
-wget -q -O del-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/del-ssws.sh" && chmod +x del-ssws
-wget -q -O renew-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/renew-ssws.sh" && chmod +x renew-ssws
-wget -q -O cek-ssws "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/cek-ssws.sh" && chmod +x cek-ssws
+dl add-vless      "$BASE/add-vless.sh"
+dl trialvless     "$BASE/trialvless.sh"
+dl renew-vless    "$BASE/renew-vless.sh"
+dl del-vless      "$BASE/del-vless.sh"
+dl cek-vless      "$BASE/cek-vless.sh"
+
+dl add-tr         "$BASE/add-tr.sh"
+dl trialtrojan    "$BASE/trialtrojan.sh"
+dl del-tr         "$BASE/del-tr.sh"
+dl renew-tr       "$BASE/renew-tr.sh"
+dl cek-tr         "$BASE/cek-tr.sh"
+
+dl add-ssws       "$BASE/add-ssws.sh"
+dl trialssws      "$BASE/trialssws.sh"
+dl del-ssws       "$BASE/del-ssws.sh"
+dl renew-ssws     "$BASE/renew-ssws.sh"
+dl cek-ssws       "$BASE/cek-ssws.sh"
 
 # Move domain file
 mv /root/domain /etc/xray/ 2>/dev/null || true

@@ -90,7 +90,7 @@ else
         -keyout "$CERT_DIR/privkey.pem" \
         -out "$CERT_DIR/fullchain.pem" \
         -subj "/C=PH/ST=Metro Manila/L=Manila/O=VPN/CN=$DOMAIN" 2>/dev/null
-    echo -e "[ ${yellow}INFO${NC} ] Self-signed certificate created in $CERT_DIR"
+    echo -e "[ ${yell}INFO${NC} ] Self-signed certificate created in $CERT_DIR"
 fi
 
 # ---- Set correct permissions ----
@@ -110,7 +110,7 @@ cat "$CERT_DIR/fullchain.pem" "$CERT_DIR/privkey.pem" > /etc/stunnel/stunnel.pem
 chmod 600 /etc/stunnel/stunnel.pem
 chown stunnel4:stunnel4 /etc/stunnel/stunnel.pem 2>/dev/null || true
 
-# ---- Auto‑renewal cron (every 30 days) ----
+# ---- Auto‑renewal cron (every Monday) ----
 RENEW_SCRIPT="/usr/local/bin/cert-renew.sh"
 cat > "$RENEW_SCRIPT" << 'RENEW_EOF'
 #!/bin/bash
