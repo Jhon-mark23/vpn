@@ -130,23 +130,145 @@ EOF
 
     echo "MarcScript SSH VPN Server" 
 
-echo "
-============================================================
-        MARCSCRIPT SSH VPN SERVER
-============================================================
+echo "[</>] Notes =
 
-📡 AVAILABLE PROTOCOLS:
+<center>
 
-  SSH + SSL (Stunnel)     → Port 8443, 8444
-  SSH + WebSocket         → Port 8080, 8082
-  SSH + WS + SSL          → Port 8445
-  Xray / V2Ray TLS        → Port 443
-  Xray / V2Ray None TLS   → Port 80
-  Dropbear SSH            → Port 109, 143
-  Squid Proxy             → Port 3128, 8082, 8888
+<h1>
+🚀
+<font color="#00b0ff">M</font><font color="#29b6f6">A</font><font color="#4fc3f7">R</font><font color="#81d4fa">C</font><font color="#b3e5fc">S</font><font color="#4dd0e1">C</font><font color="#26c6da">R</font><font color="#00acc1">I</font><font color="#0097a7">P</font><font color="#00838f">T</font>
+🚀
+</h1>
 
-⚠️  Port 22 (SSH Direct) has limited compatibility.
-    Use port 8443 (SSH+SSL) or 8080 (SSH+WS) for best results.
+<font color="#00e5ff">
+███████╗███████╗██╗  ██╗
+</font><br>
+<font color="#4dd0e1">
+██╔════╝██╔════╝██║  ██║
+</font><br>
+<font color="#80deea">
+███████╗███████╗███████║
+</font><br>
+<font color="#b2ebf2">
+╚════██║╚════██║██╔══██║
+</font><br>
+<font color="#e0f7fa">
+███████║███████║██║  ██║
+</font><br>
+<font color="#ffffff">
+╚══════╝╚══════╝╚═╝  ╚═╝
+</font>
+
+<br><br>
+
+<font color="#ffff00"><b>CONNECTING...</b></font>
+
+<br>
+
+<font color="#ffff00">██████░░░░ 20%</font><br>
+<font color="#bfff00">██████████░░ 40%</font><br>
+<font color="#76ff03">██████████████░░ 60%</font><br>
+<font color="#00e676">██████████████████░░ 80%</font><br>
+<font color="#00e5ff">████████████████████ 100%</font>
+
+<br><br>
+
+<font color="#2962ff">🅒</font>
+<font color="#2979ff">🅞</font>
+<font color="#448aff">🅝</font>
+<font color="#64b5f6">🅝</font>
+<font color="#82b1ff">🅔</font>
+<font color="#80deea">🅒</font>
+<font color="#26c6da">🅣</font>
+<font color="#00acc1">🅔</font>
+<font color="#00e5ff">🅓</font>
+
+<br><br>
+
+<h2>
+📡 <font color="#00b0ff">MARCSCRIPT SSH VPN SERVER</font>
+</h2>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<font color="#00ff66"><b>📡 AVAILABLE PROTOCOLS</b></font>
+
+<br><br>
+
+<font color="#ffffff">🔹 SSH + SSL (Stunnel)</font><br>
+<font color="#00e5ff">➜ Port : 8443 , 8444</font>
+
+<br><br>
+
+<font color="#ffffff">🔹 SSH + WebSocket</font><br>
+<font color="#00e5ff">➜ Port : 8080 , 8082</font>
+
+<br><br>
+
+<font color="#ffffff">🔹 SSH + WS + SSL</font><br>
+<font color="#00e5ff">➜ Port : 8445</font>
+
+<br><br>
+
+<font color="#ffffff">🔹 Xray / V2Ray TLS</font><br>
+<font color="#00ff80">➜ Port : 443</font>
+
+<br><br>
+
+<font color="#ffffff">🔹 Xray / V2Ray None TLS</font><br>
+<font color="#ffeb3b">➜ Port : 80</font>
+
+<br><br>
+
+<font color="#ffffff">🔹 Dropbear SSH</font><br>
+<font color="#ff9800">➜ Port : 109 , 143</font>
+
+<br><br>
+
+<font color="#ffffff">🔹 Squid Proxy</font><br>
+<font color="#ff4081">➜ Port : 3128 , 8082 , 8888</font>
+
+<br><br>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<font color="#ff1744">
+⚠ Direct SSH Port 22 has limited compatibility.
+</font>
+
+<br>
+
+<font color="#76ff03">
+✔ Recommended:
+</font>
+
+<br>
+
+<font color="#00e676">
+🔐 SSH + SSL → <b>8443</b>
+</font>
+
+<br>
+
+<font color="#00b0ff">
+🌐 SSH + WebSocket → <b>8080</b>
+</font>
+
+<br><br>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<font color="#00ffcc">
+🚀 FAST • STABLE • SECURE
+</font>
+
+<br>
+
+<font color="#80ff00">
+⚡ MARCSCRIPT VPN ⚡
+</font>
+
+</center>
 " > /etc/ssh/ssh_banner
 
 

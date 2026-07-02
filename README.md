@@ -17,12 +17,9 @@ Please read thoroughly before starting the installation!
   <img src="https://companieslogo.com/img/orig/debian_BIG-7a652e6a.png?t=1720244494" alt="Debian Logo" width="180"/> 
   <img src="https://assets.ubuntu.com/v1/29985a98-ubuntu-logo32.png" alt="Ubuntu Logo" width="180"/>
   <br/>
-  <img src="https://img.shields.io/badge/Ubuntu-26.04%20LTS-E95420?style=for-the-badge&logo=ubuntu&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Ubuntu-22.04%20LTS-E95420?style=for-the-badge&logo=ubuntu&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Ubuntu-24.04%20LTS-E95420?style=for-the-badge&logo=ubuntu&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Ubuntu-26%20-E95420?style=for-the-badge&logo=ubuntu&logoColor=white"/>
   <br/>
-  <img src="https://img.shields.io/badge/Debian-11%20Bullseye-A81D33?style=for-the-badge&logo=debian&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Debian-12%20Bookworm-A81D33?style=for-the-badge&logo=debian&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Debian-13%20-A81D33?style=for-the-badge&logo=debian&logoColor=white"/>
 </p>
 
 - ⚡ **CPU:** Minimum 1 Core
