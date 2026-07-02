@@ -30,7 +30,7 @@ Please read thoroughly before starting the installation!
 Login to your VPS as **root**, then run:
 
 ```bash
-sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sysctl -w net.ipv6.conf.default.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl unzip && wget https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/setup.sh && chmod +x setup.sh && sed -i -e 's/\r$//' setup.sh && screen -S setup ./setup.sh
+sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sysctl -w net.ipv6.conf.default.disable_ipv6=1 && apt update && apt install -y bzip2 gzip coreutils screen curl unzip && wget https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/setup.sh && chmod +x setup.sh && sed -i 's/\r$//' setup.sh && screen -S setup ./setup.sh
 ```
 
 ----
