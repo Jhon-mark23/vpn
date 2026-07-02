@@ -206,7 +206,174 @@ configure_ssh() {
     echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
-    echo "MarcScript SSH VPN Server - $(date)" > /etc/ssh/ssh_banner
+    echo "
+<div style="text-align:center;">
+
+<h1>
+🚀
+<font color="#00BFFF">M</font><font color="#1EC8FF">A</font><font color="#39D2FF">R</font><font color="#52DBFF">C</font><font color="#6BE4FF">S</font><font color="#52DBFF">C</font><font color="#39D2FF">R</font><font color="#1EC8FF">I</font><font color="#00BFFF">P</font><font color="#0099CC">T</font>
+🚀
+</h1>
+
+<font color="#00E5FF">
+═══════════════════════════════
+</font><br>
+
+<font color="#B3F5FF">
+███╗   ███╗ █████╗ ██████╗  ██████╗
+</font><br>
+<font color="#8DEEFF">
+████╗ ████║██╔══██╗██╔══██╗██╔════╝
+</font><br>
+<font color="#66E6FF">
+██╔████╔██║███████║██████╔╝██║
+</font><br>
+<font color="#40DFFF">
+██║╚██╔╝██║██╔══██║██╔══██╗██║
+</font><br>
+<font color="#1AD8FF">
+██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗
+</font><br>
+<font color="#00D0FF">
+╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝
+</font>
+
+<br><br>
+
+<font color="#FFD700"><b>⚡ CONNECTING TO SERVER ⚡</b></font>
+
+<br><br>
+
+<font color="#FFF176">▰▱▱▱▱▱▱▱▱▱ 20%</font><br>
+<font color="#D4FF00">▰▰▰▰▱▱▱▱▱▱ 40%</font><br>
+<font color="#76FF03">▰▰▰▰▰▰▱▱▱▱ 60%</font><br>
+<font color="#00E676">▰▰▰▰▰▰▰▰▱▱ 80%</font><br>
+<font color="#00E5FF">▰▰▰▰▰▰▰▰▰▰ 100%</font>
+
+<br><br>
+
+<font color="#2962FF">🅒</font>
+<font color="#448AFF">🅞</font>
+<font color="#64B5F6">🅝</font>
+<font color="#90CAF9">🅝</font>
+<font color="#B3E5FC">🅔</font>
+<font color="#80DEEA">🅒</font>
+<font color="#4DD0E1">🅣</font>
+<font color="#26C6DA">🅔</font>
+<font color="#00BCD4">🅓</font>
+
+<br><br>
+
+<h2>
+📡 <font color="#00E5FF">MARCSCRIPT SSH VPN SERVER</font>
+</h2>
+
+<font color="#00BFFF">
+═══════════════════════════════
+</font>
+
+<br><br>
+
+<font color="#00FF66"><b>📡 AVAILABLE PROTOCOLS</b></font>
+
+<br><br>
+
+<font color="#FFFFFF">🔐 SSH + SSL (Stunnel)</font><br>
+<font color="#00E5FF">Port : 8443 • 8444</font>
+
+<br><br>
+
+<font color="#FFFFFF">🌐 SSH + WebSocket</font><br>
+<font color="#00E5FF">Port : 8080 • 8082</font>
+
+<br><br>
+
+<font color="#FFFFFF">🛡 SSH + WS + SSL</font><br>
+<font color="#00E5FF">Port : 8445</font>
+
+<br><br>
+
+<font color="#FFFFFF">🚀 Xray / V2Ray TLS</font><br>
+<font color="#00FF80">Port : 443</font>
+
+<br><br>
+
+<font color="#FFFFFF">🚀 Xray / V2Ray Non TLS</font><br>
+<font color="#FFD54F">Port : 80</font>
+
+<br><br>
+
+<font color="#FFFFFF">🔑 Dropbear SSH</font><br>
+<font color="#FF9800">Port : 109 • 143</font>
+
+<br><br>
+
+<font color="#FFFFFF">🌍 Squid Proxy</font><br>
+<font color="#FF4081">Port : 3128 • 8082 • 8888</font>
+
+<br><br>
+
+<font color="#00BFFF">
+═══════════════════════════════
+</font>
+
+<br>
+
+<font color="#FF5252">
+⚠ Port 22 has limited compatibility.
+</font>
+
+<br><br>
+
+<font color="#76FF03">
+✔ Recommended Ports
+</font>
+
+<br><br>
+
+<font color="#00E676">
+🔐 SSH + SSL → <b>8443</b>
+</font>
+
+<br>
+
+<font color="#29B6F6">
+🌐 SSH + WS → <b>8080</b>
+</font>
+
+<br>
+
+<font color="#00E5FF">
+🚀 Xray TLS → <b>443</b>
+</font>
+
+<br><br>
+
+<font color="#00BFFF">
+═══════════════════════════════
+</font>
+
+<br>
+
+<font color="#00FFD5">
+⚡ FAST • STABLE • SECURE ⚡
+</font>
+
+<br><br>
+
+<font color="#7CFF00">
+🚀 MARCSCRIPT VPN 🚀
+</font>
+
+<br>
+
+<font color="#B3E5FC">
+Powered by OpenSSH • Xray-Core • Nginx • Stunnel
+</font>
+
+</div>
+    " > /etc/ssh/ssh_banner
+    
     echo "Banner /etc/ssh/ssh_banner" >> /etc/ssh/sshd_config
 
     # Validate configuration syntax cleanly
