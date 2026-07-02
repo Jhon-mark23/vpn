@@ -31,7 +31,7 @@ show_banner() {
 }
 
 # ============================================================
-# DETECT OS
+# DETECT OS & CLEAN PORT 80 COMPETITORS
 # ============================================================
 detect_os() {
     if [ -f /etc/os-release ]; then
@@ -46,6 +46,13 @@ detect_os() {
         print_error "This script only supports Ubuntu or Debian"
         exit 1
     fi
+
+    # Kill apache2 if default installed, ensuring it doesn't fight Nginx for port 80
+    if systemctl is-enabled apache2 &>/dev/null || systemctl is-active apache2 &>/dev/null; then
+        print_warn "Apache2 detected! Removing conflict to free up Port 80..."
+        systemctl stop apache2 || true
+        systemctl disable apache2 || true
+    fi
 }
 
 # ============================================================
@@ -54,10 +61,9 @@ detect_os() {
 install_python() {
     print_info "Installing Python3 and dependencies..."
     apt-get update -qq >/dev/null
-    apt-get install -y python3 python3-pip curl 2>/dev/null || {
-        apt install -y python3 python3-pip 2>/dev/null || true
+    apt-get install -y python3 python3-pip curl psmisc 2>/dev/null || {
+        apt install -y python3 python3-pip psmisc 2>/dev/null || true
     }
-    # For Debian, make sure python is a symlink
     if [[ "$OS" == "debian" ]]; then
         if [ ! -f /usr/bin/python ] && [ -f /usr/bin/python3 ]; then
             ln -s /usr/bin/python3 /usr/bin/python
@@ -73,13 +79,13 @@ install_python() {
 create_proxy_scripts() {
     print_info "Creating ws-dropbear (port 2095) and ws-stunnel (port 700)..."
 
-    # ── ws-dropbear (non‑SSL, port 2095) ──
+    # ── ws-dropbear (Safe fallback to port 2095 instead of 80) ──
     cat > /usr/local/bin/ws-dropbear <<'PYEOF'
 #!/usr/bin/env python3
 import socket, threading, select, signal, sys, time, getopt
 
 LISTENING_ADDR = '0.0.0.0'
-LISTENING_PORT = 80
+LISTENING_PORT = 2095
 if sys.argv[1:]:
     try:
         LISTENING_PORT = int(sys.argv[1])
@@ -505,19 +511,17 @@ if __name__ == '__main__':
     main()
 PYEOF
 
-    # Fix line endings & permissions
     sed -i 's/\r$//' /usr/local/bin/ws-dropbear /usr/local/bin/ws-stunnel
     chmod +x /usr/local/bin/ws-dropbear /usr/local/bin/ws-stunnel
     print_success "Proxy scripts installed to /usr/local/bin/"
 }
 
 # ============================================================
-# INSTALL SYSTEMD SERVICE UNITS (exactly as provided)
+# INSTALL SYSTEMD SERVICE UNITS
 # ============================================================
 install_service_units() {
     print_info "Installing systemd service files..."
 
-    # ws-dropbear.service (port 2095)
     cat > /etc/systemd/system/ws-dropbear.service <<'EOF'
 [Unit]
 Description=Websocket-Dropbear (Internal port 2095)
@@ -538,7 +542,6 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
-    # ws-stunnel.service (port 700)
     cat > /etc/systemd/system/ws-stunnel.service <<'EOF'
 [Unit]
 Description=SSH Over Websocket-SSL (HTTPS port 443)

@@ -76,7 +76,6 @@ if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
         ln -sf /etc/ssl/vpn/privkey.pem /etc/xray/xray.key
         chmod 600 /etc/xray/xray.key
     fi
-    # Double-check after attempt
     if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
         echo -e "[ ${red}ERROR${NC} ] Failed to provide a certificate. Xray will start but may not work correctly."
     fi
@@ -88,7 +87,7 @@ apt update -y >/dev/null 2>&1
 
 PACKAGES="iptables iptables-persistent net-tools screen curl socat xz-utils wget 
 apt-transport-https gnupg gnupg2 dnsutils lsb-release bash-completion cron 
-openssl zip pwgen ca-certificates"
+openssl zip pwgen ca-certificates psmisc"
 for pkg in $PACKAGES; do
     if ! dpkg -l | grep -q "^ii  $pkg "; then
         apt install -y $pkg >/dev/null 2>&1
@@ -128,7 +127,6 @@ chown www-data.www-data /var/log/xray/*.log 2>/dev/null || true
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data
 check_success "Xray installation"
 
-# Verify binary exists, if not force reinstall
 if [ ! -f /usr/local/bin/xray ]; then
     echo -e "[ ${yell}WARNING${NC} ] Xray binary missing, trying again..."
     bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data --force
@@ -168,7 +166,6 @@ cat > /etc/xray/config.json << END
             "clients": [
                {
                  "id": "${uuid}"
-#vless
              }
           ]
        },
@@ -188,7 +185,6 @@ cat > /etc/xray/config.json << END
                {
                  "id": "${uuid}",
                  "alterId": 0
-#vmess
              }
           ]
        },
@@ -208,7 +204,6 @@ cat > /etc/xray/config.json << END
            "clients": [
               {
                  "password": "${uuid}"
-#trojanws
               }
           ],
          "udp": true
@@ -229,7 +224,6 @@ cat > /etc/xray/config.json << END
            {
            "method": "aes-128-gcm",
           "password": "${uuid}"
-#ssws
            }
           ],
           "network": "tcp,udp"
@@ -250,7 +244,6 @@ cat > /etc/xray/config.json << END
            "clients": [
              {
                "id": "${uuid}"
-#vlessgrpc
              }
           ]
        },
@@ -270,7 +263,6 @@ cat > /etc/xray/config.json << END
                {
                  "id": "${uuid}",
                  "alterId": 0
-#vmessgrpc
              }
           ]
        },
@@ -290,7 +282,6 @@ cat > /etc/xray/config.json << END
              "clients": [
                {
                  "password": "${uuid}"
-#trojangrpc
                }
            ]
         },
@@ -310,7 +301,6 @@ cat > /etc/xray/config.json << END
           {
              "method": "aes-128-gcm",
              "password": "${uuid}"
-#ssgrpc
            }
          ],
            "network": "tcp,udp"
@@ -511,7 +501,6 @@ server {
     server_name *.$domain;
     ssl_certificate /etc/xray/xray.crt;
     ssl_certificate_key /etc/xray/xray.key;
-    # Wide cipher/protocol list for old Android/VPN apps
     ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
     ssl_ciphers DEFAULT:!aNULL:!eNULL:!LOW:!MD5:!EXP:!RC4;
     root /home/vps/public_html;
@@ -609,13 +598,19 @@ systemctl enable xray 2>/dev/null || true
 systemctl restart xray
 check_success "Xray service restart"
 
+# Clear Port 80 right before checking and firing up Nginx configuration
+echo -e "[ ${green}INFO${NC} ] Clearing any existing rogue bindings on Port 80..."
+fuser -k 80/tcp 2>/dev/null || true
+
 nginx -t 2>/dev/null
 if [ $? -eq 0 ]; then
     systemctl restart nginx
     check_success "Nginx restart"
 else
     echo -e "[ ${red}ERROR${NC} ] Nginx configuration test failed!"
-    echo -e "[ ${yell}WARNING${NC} ] Please check: nginx -t"
+    echo -e "[ ${yell}WARNING${NC} ] Running forced port clearance and retry..."
+    fuser -k 80/tcp 2>/dev/null || true
+    systemctl restart nginx
 fi
 
 systemctl enable runn 2>/dev/null || true
@@ -625,7 +620,6 @@ systemctl restart runn 2>/dev/null || true
 cd /usr/bin/
 echo -e "[ ${green}INFO${NC} ] Downloading management scripts..."
 
-# Helper to download, fix line endings and make executable
 dl() {
     wget -q -O "$1" "$2" && chmod +x "$1" && sed -i 's/\r$//' "$1"
 }
@@ -656,11 +650,9 @@ dl del-ssws       "$BASE/del-ssws.sh"
 dl renew-ssws     "$BASE/renew-ssws.sh"
 dl cek-ssws       "$BASE/cek-ssws.sh"
 
-# Move domain file
 mv /root/domain /etc/xray/ 2>/dev/null || true
 [ -f /root/scdomain ] && rm /root/scdomain > /dev/null 2>&1
 
-# Final verification
 sleep 2
 if systemctl is-active --quiet xray; then
     echo -e "[ ${green}✓${NC} ] Xray is running"
