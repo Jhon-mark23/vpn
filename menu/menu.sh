@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
 # MARCSCRIPT VPN SYSTEM - MAIN INTERACTIVE SYSTEM DASHBOARD
+# With OpenVPN Integration via m-ovpn.sh
 # ============================================================
 
 MYIP=$(curl -sS ifconfig.me)
@@ -50,6 +51,20 @@ os_name=$(hostnamectl | grep "Operating System" | cut -d ':' -f2 | sed 's/^[ \t]
 tram=$( free -m | awk 'NR==2 {print $2}' )
 uram=$( free -m | awk 'NR==2 {print $3}' )
 
+# OpenVPN Status Check Engine
+if systemctl is-active --quiet openvpn@server-tcp 2>/dev/null; then
+    ovpn_status="${green}Active${NC}"
+    ovpn_tcp_port=$(grep "^port " /etc/openvpn/server-tcp.conf 2>/dev/null | awk '{print $2}')
+    ovpn_udp_port=$(grep "^port " /etc/openvpn/server-udp.conf 2>/dev/null | awk '{print $2}')
+    ovpn_info="TCP:${ovpn_tcp_port:-1194}/UDP:${ovpn_udp_port:-2200}"
+    # Count OVPN users
+    ovpn_users=$(grep -c ":active" /etc/openvpn/client-configs/users.db 2>/dev/null || echo "0")
+    ovpn_display="${ovpn_info} [${ovpn_users} users]"
+else
+    ovpn_status="${yellow}Not Installed${NC}"
+    ovpn_display="N/A"
+fi
+
 # Client System Metadata Profile
 Exp2="Lifetime"
 Name="marc"
@@ -76,6 +91,7 @@ printf "  ${white}%-14s${NC} : %-42s\n" "System Uptime" "$uptime"
 printf "  ${white}%-14s${NC} : %-42s\n" "Public IP" "$MYIP"
 printf "  ${white}%-14s${NC} : %-42s\n" "Active Domain" "$domain"
 printf "  ${white}%-14s${NC} : %-42s\n" "Memory Capacity" "$uram MB / $tram MB"
+printf "  ${white}%-14s${NC} : %-42s\n" "OpenVPN" "$ovpn_display"
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -85,33 +101,116 @@ echo -e " [ ${cyan}02${NC} ] Xray Vmess Menu         ${purple}→ Ports: 80, 443
 echo -e " [ ${cyan}03${NC} ] Xray Vless Menu         ${purple}→ Ports: 80, 443${NC}"
 echo -e " [ ${cyan}04${NC} ] Xray Trojan Menu        ${purple}→ Ports: 80, 443${NC}"
 echo -e " [ ${cyan}05${NC} ] Xray Shadowsocks Menu   ${purple}→ Ports: 80, 443${NC}"
-echo -e " [ ${cyan}06${NC} ] Server Settings Menu    ${purple}→ Automation & Tweaks${NC}"
-echo -e " [ ${cyan}07${NC} ] Check Services Status   ${purple}→ Engine Diagnostics${NC}"
-echo -e " [ ${cyan}08${NC} ] Flush System RAM Cache  ${purple}→ Free volatile memory${NC}"
-echo -e " [ ${cyan}09${NC} ] Upgrade / Reinstall Core VPN Scripts Engine${NC}"
+echo -e " [ ${cyan}06${NC} ] OpenVPN Manager         ${purple}→ Ports: TCP 1194, UDP 2200${NC}"
+echo -e " [ ${cyan}07${NC} ] Server Settings Menu    ${purple}→ Automation & Tweaks${NC}"
+echo -e " [ ${cyan}08${NC} ] Check Services Status   ${purple}→ Engine Diagnostics${NC}"
+echo -e " [ ${cyan}09${NC} ] Flush System RAM Cache  ${purple}→ Free volatile memory${NC}"
+echo -e " [ ${cyan}10${NC} ] Upgrade / Reinstall Core VPN Scripts Engine${NC}"
 echo ""
 echo -e " [ ${red}00${NC} ] ${red}CLOSE CURRENT SESSION (EXIT)${NC}"
 echo ""
 echo -e " Press ${yellow}x${NC} or [ ${yellow}Ctrl+C${NC} ] to Exit"
 echo ""
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e " ${cyan}Client Holder :${NC} ${white}$Name${NC}   | ${cyan}Expiry :${NC} ${green}$Exp2${NC} | ${cyan}SSL :${NC} ${yellow}$tlsStatus${NC}"
+echo -e " ${cyan}Client Holder :${NC} ${white}$Name${NC}   | ${cyan}Expiry :${NC} ${green}$Exp2${NC} | ${cyan}SSL :${NC} ${yellow}$tlsStatus${NC} | ${cyan}OVPN :${NC} $ovpn_status"
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-read -p " Select menu [0-9 or x]: " opt
+read -p " Select menu [0-10 or x]: " opt
 echo ""
 
 case $opt in
-1|01) clear ; m-sshovpn ;;
-2|02) clear ; m-vmess ;;
-3|03) clear ; m-vless ;;
-4|04) clear ; m-trojan ;;
-5|05) clear ; m-ssws ;;
-6|06) clear ; m-system ;;
-7|07) clear ; running ;;
-8|08) clear ; clearcache ;;
+1|01) 
+    clear 
+    m-sshovpn 
+    ;;
+2|02) 
+    clear 
+    m-vmess 
+    ;;
+3|03) 
+    clear 
+    m-vless 
+    ;;
+4|04) 
+    clear 
+    m-trojan 
+    ;;
+5|05) 
+    clear 
+    m-ssws 
+    ;;
+6|06) 
+    clear
+    # OpenVPN Menu via m-ovpn.sh
+    if command -v m-ovpn &>/dev/null; then
+        m-ovpn
+    elif [ -f /root/ovpn/menu-ovpn.sh ]; then
+        bash /root/ovpn/menu-ovpn.sh
+    elif [ -f /usr/local/bin/m-ovpn ]; then
+        bash /usr/local/bin/m-ovpn
+    else
+        echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${purple}║${yellow}              🔐 OPENVPN MANAGER - NOT INSTALLED              ${purple}║${NC}"
+        echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo -e " ${red}⚠${NC} OpenVPN is not detected on this system."
+        echo ""
+        echo -e " ${green}📡 OpenVPN Features:${NC}"
+        echo -e "  • TCP Port: 1194"
+        echo -e "  • UDP Port: 2200"
+        echo -e "  • No conflict with existing services"
+        echo -e "  • User management with expiration"
+        echo -e "  • Auto-expiration check"
+        echo ""
+        echo -e " ${cyan}Quick Install Options:${NC}"
+        echo ""
+        echo -e " ${green}Option 1:${NC} Direct install"
+        echo -e "  wget -qO- https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ovpn/install-ovpn.sh | bash"
+        echo ""
+        echo -e " ${green}Option 2:${NC} Download then install"
+        echo -e "  wget https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ovpn/install-ovpn.sh"
+        echo -e "  bash install-ovpn.sh"
+        echo ""
+        echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        read -p " Install OpenVPN now? (y/n): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo ""
+            echo -e " [ ${cyan}•${NC} ] Downloading OpenVPN installer from GitHub..."
+            wget -q -O /tmp/install-ovpn.sh https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ovpn/install-ovpn.sh
+            if [ $? -eq 0 ]; then
+                chmod +x /tmp/install-ovpn.sh
+                echo -e " [ ${green}✓${NC} ] Installer downloaded successfully"
+                echo -e " [ ${cyan}•${NC} ] Starting installation..."
+                sleep 1
+                bash /tmp/install-ovpn.sh
+                # Reload menu after installation
+                menu
+            else
+                echo -e " [ ${red}✗${NC} ] Failed to download installer!"
+                echo -e " Check your internet connection or GitHub repository."
+                sleep 3
+                menu
+            fi
+        else
+            menu
+        fi
+    fi
+    ;;
+7|07) 
+    clear 
+    m-system 
+    ;;
+8|08) 
+    clear 
+    running 
+    ;;
 9|09) 
+    clear 
+    clearcache 
+    ;;
+10) 
     clear
     echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${purple}║${yellow}                  🔄 UPGRADE CORE ENGINE SYSTEM               ${purple}║${NC}"
@@ -123,6 +222,7 @@ case $opt in
     echo -e "  ${green}✅${NC} Core Xray Engine Configurations Framework"
     echo -e "  ${green}✅${NC} Interactive Menu Systems Management Layer"
     echo -e "  ${green}✅${NC} All default proxy endpoints configuration structures"
+    echo -e "  ${green}✅${NC} OpenVPN management scripts & menu shortcuts"
     echo ""
     echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     read -p " Initialize remote upgrade runtime execution? (y/n): " -n 1 -r
@@ -141,6 +241,7 @@ case $opt in
         cp -r /etc/stunnel "$BACKUP_DIR/" 2>/dev/null || true
         cp -r /etc/nginx "$BACKUP_DIR/" 2>/dev/null || true
         cp -r /etc/squid "$BACKUP_DIR/" 2>/dev/null || true
+        cp -r /etc/openvpn "$BACKUP_DIR/" 2>/dev/null || true
         cp -f /etc/ssh/sshd_config "$BACKUP_DIR/" 2>/dev/null || true
         cp -f /root/domain "$BACKUP_DIR/" 2>/dev/null || true
         cp -f /root/domain.txt "$BACKUP_DIR/" 2>/dev/null || true
@@ -172,9 +273,10 @@ case $opt in
             # Enforce updating interface paths mapping explicitly
             cd /usr/bin
             wget -q -O menu https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/menu/menu.sh
+            wget -q -O m-ovpn https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/menu/m-ovpn.sh
             wget -q -O running https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/menu/running.sh
             wget -q -O clearcache https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/menu/clearcache.sh
-            chmod +x menu running clearcache
+            chmod +x menu m-ovpn running clearcache
         fi
         
         echo ""
