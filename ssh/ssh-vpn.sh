@@ -208,171 +208,121 @@ configure_ssh() {
 
   #  echo "  " > /etc/ssh/ssh_banner
     cat > /etc/ssh/ssh_banner <<'EOF'
-<div style="text-align:center;">
+
+<center>
 
 <h1>
 🚀
-<font color="#00BFFF">M</font><font color="#1EC8FF">A</font><font color="#39D2FF">R</font><font color="#52DBFF">C</font><font color="#6BE4FF">S</font><font color="#52DBFF">C</font><font color="#39D2FF">R</font><font color="#1EC8FF">I</font><font color="#00BFFF">P</font><font color="#0099CC">T</font>
+<font color="#00b0ff">M</font><font color="#29b6f6">A</font><font color="#4fc3f7">R</font><font color="#81d4fa">C</font><font color="#b3e5fc">S</font><font color="#4dd0e1">C</font><font color="#26c6da">R</font><font color="#00acc1">I</font><font color="#0097a7">P</font><font color="#00838f">T</font>
 🚀
 </h1>
 
-<font color="#00E5FF">
-═══════════════════════════════
+<font color="#00e5ff">
+███████╗███████╗██╗  ██╗
 </font><br>
-
-<font color="#B3F5FF">
-███╗   ███╗ █████╗ ██████╗  ██████╗
+<font color="#4dd0e1">
+██╔════╝██╔════╝██║  ██║
 </font><br>
-<font color="#8DEEFF">
-████╗ ████║██╔══██╗██╔══██╗██╔════╝
+<font color="#80deea">
+███████╗███████╗███████║
 </font><br>
-<font color="#66E6FF">
-██╔████╔██║███████║██████╔╝██║
+<font color="#b2ebf2">
+╚════██║╚════██║██╔══██║
 </font><br>
-<font color="#40DFFF">
-██║╚██╔╝██║██╔══██║██╔══██╗██║
+<font color="#e0f7fa">
+███████║███████║██║  ██║
 </font><br>
-<font color="#1AD8FF">
-██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗
-</font><br>
-<font color="#00D0FF">
-╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝
+<font color="#ffffff">
+╚══════╝╚══════╝╚═╝  ╚═╝
 </font>
 
 <br><br>
 
-<font color="#FFD700"><b>⚡ CONNECTING TO SERVER ⚡</b></font>
+<font color="#ffff00"><b>CONNECTING...</b></font>
+
+<br>
+
+<font color="#ffff00">██████░░░░ 20%</font><br>
+<font color="#bfff00">██████████░░ 40%</font><br>
+<font color="#76ff03">██████████████░░ 60%</font><br>
+<font color="#00e676">██████████████████░░ 80%</font><br>
+<font color="#00e5ff">████████████████████ 100%</font>
 
 <br><br>
 
-<font color="#FFF176">▰▱▱▱▱▱▱▱▱▱ 20%</font><br>
-<font color="#D4FF00">▰▰▰▰▱▱▱▱▱▱ 40%</font><br>
-<font color="#76FF03">▰▰▰▰▰▰▱▱▱▱ 60%</font><br>
-<font color="#00E676">▰▰▰▰▰▰▰▰▱▱ 80%</font><br>
-<font color="#00E5FF">▰▰▰▰▰▰▰▰▰▰ 100%</font>
-
-<br><br>
-
-<font color="#2962FF">🅒</font>
-<font color="#448AFF">🅞</font>
-<font color="#64B5F6">🅝</font>
-<font color="#90CAF9">🅝</font>
-<font color="#B3E5FC">🅔</font>
-<font color="#80DEEA">🅒</font>
-<font color="#4DD0E1">🅣</font>
-<font color="#26C6DA">🅔</font>
-<font color="#00BCD4">🅓</font>
+<font color="#2962ff">🅒</font>
+<font color="#2979ff">🅞</font>
+<font color="#448aff">🅝</font>
+<font color="#64b5f6">🅝</font>
+<font color="#82b1ff">🅔</font>
+<font color="#80deea">🅒</font>
+<font color="#26c6da">🅣</font>
+<font color="#00acc1">🅔</font>
+<font color="#00e5ff">🅓</font>
 
 <br><br>
 
 <h2>
-📡 <font color="#00E5FF">MARCSCRIPT SSH VPN SERVER</font>
+📡 <font color="#00b0ff">MARCSCRIPT SSH  XRAY VPN SERVER</font>
 </h2>
 
-<font color="#00BFFF">
-═══════════════════════════════
-</font>
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<font color="#00ff66"><b>📡 AVAILABLE PROTOCOLS</b></font>
+<br><br>
+
+<font color="#ffffff">🔹 SSH DIRECT</font><br>
+<font color="#00e5ff">➜ Port : 22 </font>
+<br>
+<font color="#00e5ff">NOTE: If you using HTTP CUSTOM and has error in Port 22 direct use HTTP INJECTOR</font>
 
 <br><br>
 
-<font color="#00FF66"><b>📡 AVAILABLE PROTOCOLS</b></font>
+<br><br>
+
+<font color="#ffffff">🔹 SSH + SSL (Stunnel)</font><br>
+<font color="#00e5ff">➜ Port : 8443 </font>
 
 <br><br>
 
-<font color="#FFFFFF">🔐 SSH + SSL (Stunnel)</font><br>
-<font color="#00E5FF">Port : 8443 • 8444</font>
+<font color="#ffffff">🔹 SSH + WebSocket</font><br>
+<font color="#00e5ff">➜ Port : 8080 </font>
 
 <br><br>
 
-<font color="#FFFFFF">🌐 SSH + WebSocket</font><br>
-<font color="#00E5FF">Port : 8080 • 8082</font>
+<font color="#ffffff">🔹 SSH + WS + SSL</font><br>
+<font color="#00e5ff">➜ Port : 8445</font>
 
 <br><br>
 
-<font color="#FFFFFF">🛡 SSH + WS + SSL</font><br>
-<font color="#00E5FF">Port : 8445</font>
+<font color="#ffffff">🔹 Xray / V2Ray TLS</font><br>
+<font color="#00ff80">➜ Port : 443</font>
 
 <br><br>
 
-<font color="#FFFFFF">🚀 Xray / V2Ray TLS</font><br>
-<font color="#00FF80">Port : 443</font>
+<font color="#ffffff">🔹 Xray / V2Ray None TLS</font><br>
+<font color="#ffeb3b">➜ Port : 80</font>
 
 <br><br>
 
-<font color="#FFFFFF">🚀 Xray / V2Ray Non TLS</font><br>
-<font color="#FFD54F">Port : 80</font>
 
-<br><br>
 
-<font color="#FFFFFF">🔑 Dropbear SSH</font><br>
-<font color="#FF9800">Port : 109 • 143</font>
 
-<br><br>
 
-<font color="#FFFFFF">🌍 Squid Proxy</font><br>
-<font color="#FF4081">Port : 3128 • 8082 • 8888</font>
 
-<br><br>
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-<font color="#00BFFF">
-═══════════════════════════════
+<font color="#00ffcc">
+🚀 FAST • STABLE • SECURE
 </font>
 
 <br>
 
-<font color="#FF5252">
-⚠ Port 22 has limited compatibility.
+<font color="#80ff00">
+⚡ MARCSCRIPT VPN ⚡
 </font>
 
-<br><br>
-
-<font color="#76FF03">
-✔ Recommended Ports
-</font>
-
-<br><br>
-
-<font color="#00E676">
-🔐 SSH + SSL → <b>8443</b>
-</font>
-
-<br>
-
-<font color="#29B6F6">
-🌐 SSH + WS → <b>8080</b>
-</font>
-
-<br>
-
-<font color="#00E5FF">
-🚀 Xray TLS → <b>443</b>
-</font>
-
-<br><br>
-
-<font color="#00BFFF">
-═══════════════════════════════
-</font>
-
-<br>
-
-<font color="#00FFD5">
-⚡ FAST • STABLE • SECURE ⚡
-</font>
-
-<br><br>
-
-<font color="#7CFF00">
-🚀 MARCSCRIPT VPN 🚀
-</font>
-
-<br>
-
-<font color="#B3E5FC">
-Powered by OpenSSH • Xray-Core • Nginx • Stunnel
-</font>
-
-</div>
+</center>
 EOF
     
     echo "Banner /etc/ssh/ssh_banner" >> /etc/ssh/sshd_config
