@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
 # MARCSCRIPT SSH-VPN INSTALLER - XRAY COMPATIBLE
+# (Using centralised certificate from create-cert.sh)
 # Protocols:
 #   - SSH Direct (22, 2222) - Xray safe
 #   - SSH+SSL (8443, 8444) - Xray uses 443
@@ -169,6 +170,18 @@ configure_ssh() {
 configure_stunnel() {
     print_info "Configuring SSH+SSL (ports 8443, 8444 - Xray safe)..."
 
+    # Ensure the certificate has been created by the central script
+    if [ ! -f /etc/stunnel/stunnel.pem ]; then
+        print_warning "Unified certificate not found in /etc/stunnel/stunnel.pem"
+        if [ -f /usr/local/bin/create-cert.sh ]; then
+            print_info "Running create-cert.sh to generate the certificate..."
+            /usr/local/bin/create-cert.sh
+        else
+            print_error "create-cert.sh not found. Please run create-cert.sh first."
+            exit 1
+        fi
+    fi
+
     apt install -y stunnel4 2>/dev/null
 
     mkdir -p /var/log/stunnel4
@@ -183,20 +196,9 @@ configure_stunnel() {
     chown stunnel4:stunnel4 /var/run/stunnel4 2>/dev/null || chown root:root /var/run/stunnel4
     chmod 755 /var/run/stunnel4
 
-    # Generate SSL certificate
-    cd /tmp
-    openssl genrsa -out /tmp/stunnel-key.pem 2048 2>/dev/null
-    openssl req -new -x509 \
-        -key /tmp/stunnel-key.pem \
-        -out /tmp/stunnel-cert.pem \
-        -days 3650 \
-        -subj "/C=PH/ST=Metro Manila/L=Manila/O=MarcScript/CN=localhost" \
-        2>/dev/null
-    cat /tmp/stunnel-key.pem /tmp/stunnel-cert.pem > /etc/stunnel/stunnel.pem
+    # The unified PEM (cert + key) already exists from create-cert.sh
     chmod 600 /etc/stunnel/stunnel.pem
     chown stunnel4:stunnel4 /etc/stunnel/stunnel.pem 2>/dev/null || true
-    rm -f /tmp/stunnel-key.pem /tmp/stunnel-cert.pem
-    cd
 
     cat > /etc/stunnel/stunnel.conf <<'EOF'
 ; Stunnel4 Config - Xray Compatible
@@ -839,6 +841,7 @@ main() {
     echo "==========================================="
     echo "   MARCSCRIPT SSH VPN INSTALLER"
     echo "   Xray/V2Ray Compatible"
+    echo "   (Uses centralised certificate)"
     echo "==========================================="
     echo ""
     echo "Protocols to be installed:"
@@ -850,6 +853,7 @@ main() {
     echo "  ✅ SSH+SSL+Payload  : 8443 + 3128"
     echo ""
     echo "⚠️  Xray uses: 80, 443, 81 - NO CONFLICT!"
+    echo "⚠️  Certificate handled by create-cert.sh"
     echo ""
     read -p "Continue? (y/N): " -n 1 -r
     echo
@@ -863,7 +867,7 @@ main() {
     install_base_packages
     setup_rclocal
     configure_ssh
-    configure_stunnel
+    configure_stunnel        # Now uses create-cert.sh automatically
     configure_websocket
     configure_squid
     install_dropbear
