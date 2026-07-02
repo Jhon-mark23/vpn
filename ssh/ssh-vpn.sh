@@ -206,7 +206,8 @@ configure_ssh() {
     echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
-    echo "
+  #  echo "  " > /etc/ssh/ssh_banner
+    cat > /etc/ssh/ssh_banner <<'EOF'
 <div style="text-align:center;">
 
 <h1>
@@ -372,7 +373,7 @@ Powered by OpenSSH • Xray-Core • Nginx • Stunnel
 </font>
 
 </div>
-    " > /etc/ssh/ssh_banner
+EOF
     
     echo "Banner /etc/ssh/ssh_banner" >> /etc/ssh/sshd_config
 
