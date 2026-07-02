@@ -96,62 +96,86 @@ END
 }
 
 # ============================================================
-# PROTOCOL 1: SSH with legacy algorithm support
+# PROTOCOL 1: SSH – optimised for VPN apps
 # ============================================================
 configure_ssh() {
-    print_info "Configuring SSH (ports 22, 2222) with legacy algorithm support..."
+    print_info "Configuring SSH (ports 22, 2222) for VPN tunnels..."
     cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak 2>/dev/null || true
 
-    # Write a complete, safe config
     cat > /etc/ssh/sshd_config <<EOF
+# === MARCSCRIPT VPN-READY SSH CONFIG ===
+
 Port 22
 Port 2222
+
+# Authentication (allow root with password)
 PasswordAuthentication yes
 PermitRootLogin yes
 PubkeyAuthentication yes
 ChallengeResponseAuthentication no
 UsePAM yes
 PermitEmptyPasswords no
+
+# Session limits
 MaxAuthTries 5
-MaxSessions 10
+MaxSessions 30
+MaxStartups 20:30:50
 LoginGraceTime 60
-ClientAliveInterval 60
+
+# Keep connections alive
+ClientAliveInterval 120
 ClientAliveCountMax 3
+TCPKeepAlive yes
+
+# Enable tunnelling and port forwarding (required by VPN apps)
+AllowTcpForwarding yes
+PermitTunnel yes
+GatewayPorts yes
+PermitTTY no                # <-- crucial: allows non‑interactive sessions
+
+# Performance
 UseDNS no
 PrintMotd no
 X11Forwarding no
-Banner /etc/ssh/ssh_banner
+
+# Subsystem (sftp)
 Subsystem sftp /usr/lib/openssh/sftp-server
 
-# Allow older algorithms for maximum client compatibility
+# Banner (for identification)
+Banner /etc/ssh/ssh_banner
+
+# Legacy algorithm support for older clients
 KexAlgorithms +diffie-hellman-group1-sha1,diffie-hellman-group14-sha1
 Ciphers +aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc
+MACs +hmac-md5,hmac-sha1
+HostKeyAlgorithms +ssh-rsa,ssh-dss
 EOF
 
-    echo "MarcScript SSH VPN Server (Xray Compatible)" > /etc/ssh/ssh_banner
+    echo "MarcScript VPN Server (Xray Compatible)" > /etc/ssh/ssh_banner
 
     sshd -t >> /dev/null 2>&1 || {
-        print_error "SSH config test failed"
+        print_error "SSH config test failed – restoring backup"
         cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
         exit 1
     }
 
     systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     systemctl enable ssh 2>/dev/null || true
-    print_success "SSH Direct on ports 22, 2222 (legacy algorithms enabled)"
+    print_success "SSH ready for VPN clients (22, 2222)"
 }
 
 # ============================================================
 # PROTOCOL 2: SSH+SSL with maximum TLS compatibility
 # ============================================================
 configure_stunnel() {
-    print_info "Configuring SSH+SSL (ports 8443, 8444, 8445) with broad TLS support..."
+    print_info "Configuring SSH+SSL (8443, 8444, 8445) with broad TLS support..."
 
-    # Ensure certificate exists
+    # Ensure certificate exists (with CRLF fix)
     if [ ! -f /etc/stunnel/stunnel.pem ]; then
         if [ -f /usr/local/bin/create-cert.sh ]; then
+            sed -i 's/\r$//' /usr/local/bin/create-cert.sh   # fix line endings
             print_info "Running create-cert.sh..."
-            /usr/local/bin/create-cert.sh
+            bash /usr/local/bin/create-cert.sh
         else
             print_warning "create-cert.sh not found – generating self-signed fallback"
             mkdir -p /etc/ssl/vpn
@@ -175,7 +199,6 @@ configure_stunnel() {
     chmod 600 /etc/stunnel/stunnel.pem
     chown stunnel4:stunnel4 /etc/stunnel/stunnel.pem 2>/dev/null || true
 
-    # Stunnel config with maximum compatibility
     cat > /etc/stunnel/stunnel.conf <<'EOF'
 ; Stunnel4 Config – maximum client compatibility
 cert = /etc/stunnel/stunnel.pem
@@ -187,12 +210,10 @@ output = /var/log/stunnel4/stunnel.log
 pid = /var/run/stunnel4/stunnel4.pid
 debug = 3
 
-; Allow all TLS versions except SSLv2/SSLv3
 sslVersion = all
 options = NO_SSLv2
 options = NO_SSLv3
 
-; Very broad cipher list for old Android and VPN apps
 ciphers = DEFAULT:!aNULL:!eNULL:!LOW:!MD5:!EXP:!RC4
 
 [ssh-ssl]
@@ -345,7 +366,7 @@ EOF
 }
 
 # ============================================================
-# PROTOCOL 4,5,6: Squid, Dropbear, BADVPN (unchanged)
+# PROTOCOL 4,5,6: Squid, Dropbear, BADVPN
 # ============================================================
 configure_squid() {
     print_info "Configuring Squid proxy (3128, 8082, 8888)..."
@@ -528,19 +549,13 @@ EOF
     print_success "Nginx configured on ports 81, 8081"
 }
 
-# ============================================================
-# DOWNLOAD MANAGEMENT SCRIPTS (with CRLF fix)
-# ============================================================
 download_scripts() {
     print_info "Downloading management scripts..."
     GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
     cd /usr/bin
-
-    # Helper to download and fix
     dl() {
         wget -q -O "$1" "$GHBASE/$2" && chmod +x "$1" && sed -i 's/\r$//' "$1"
     }
-
     dl menu menu/menu.sh
     dl m-sshovpn menu/m-sshovpn.sh
     dl m-vmess menu/m-vmess.sh
@@ -570,9 +585,6 @@ download_scripts() {
     print_success "Management scripts downloaded (line endings fixed)"
 }
 
-# ============================================================
-# VPN STATUS (dynamic WS detection)
-# ============================================================
 create_vpn_status() {
     cat > /usr/local/bin/vpn-status <<'EOF'
 #!/bin/bash
@@ -619,9 +631,6 @@ END
     print_success "Cron jobs configured"
 }
 
-# ============================================================
-# RESTART ALL SERVICES (including all possible WS)
-# ============================================================
 restart_services() {
     print_info "Restarting all services..."
     for svc in nginx cron ssh dropbear stunnel4 ws-proxy ws-dropbear ws-stunnel squid fail2ban; do
@@ -648,7 +657,7 @@ main() {
     clear
     echo "==========================================="
     echo "   MARCSCRIPT SSH VPN INSTALLER"
-    echo "   (Max client TLS compatibility)"
+    echo "   (Max client compatibility)"
     echo "==========================================="
     read -p "Continue? (y/N): " -n 1 -r
     echo
