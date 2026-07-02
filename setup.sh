@@ -11,7 +11,7 @@
 #   5. Install Xray (ins-xray.sh)
 #
 # Author: MarcScript
-# Version: 2.1
+# Version: 2.2
 # ============================================================
 
 # ---------- COLOURS ----------
@@ -50,7 +50,7 @@ show_banner() {
     echo -e "${BPurple}║${BWhite}     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║${BPurple}║${NC}"
     echo -e "${BPurple}║${BWhite}     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║${BPurple}║${NC}"
     echo -e "${BPurple}║${BWhite}     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝${BPurple}║${NC}"
-    echo -e "${BPurple}║${BCyan}           ALL-IN-ONE VPN INSTALLER v2.1                  ${BPurple}║${NC}"
+    echo -e "${BPurple}║${BCyan}           ALL-IN-ONE VPN INSTALLER v2.2                  ${BPurple}║${NC}"
     echo -e "${BPurple}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -167,7 +167,7 @@ detect_os
 clean_old_services
 secure_ssh
 
-# Domain setup (copied from original)
+# Domain setup
 clear
 rm -rf setup.sh
 rm -rf /etc/xray/domain /etc/v2ray/domain /etc/xray/scdomain /etc/v2ray/scdomain /var/lib/ipvps.conf
@@ -235,7 +235,9 @@ fi
 mkdir -p /var/lib/ >/dev/null 2>&1
 echo "IP=" >> /var/lib/ipvps.conf
 
-# Domain choice
+# ============================================================
+# DOMAIN CHOICE (with option 3 = reuse previous domain)
+# ============================================================
 echo ""
 show_banner
 echo -e "${BCyan}╔══════════════════════════════════════════════════════════════╗${NC}"
@@ -244,10 +246,27 @@ echo -e "${BCyan}╚════════════════════
 echo ""
 echo -e "${BGreen} 1. ${NC}Use Random Domain (via Cloudflare)"
 echo -e "${BGreen} 2. ${NC}Use Your Own Domain"
+echo -e "${BGreen} 3. ${NC}Re-use Previous Domain"
 echo -e "${BYellow}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-read -rp " Select domain option [1-2]: " dns
+
+# Check if a previous domain exists
+PREVIOUS_DOMAIN=""
+if [ -f /root/domain ]; then
+    PREVIOUS_DOMAIN=$(cat /root/domain 2>/dev/null)
+fi
+
+if [ -n "$PREVIOUS_DOMAIN" ]; then
+    echo -e "${BCyan} ℹ Previous domain found: ${BYellow}${PREVIOUS_DOMAIN}${NC}"
+else
+    echo -e "${BCyan} ℹ No previous domain found.${NC}"
+fi
+echo -e "${BYellow}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+read -rp " Select domain option [1-3]: " dns
 dns="${dns//[[:space:]]/}"
+
 if [[ "$dns" == "1" ]]; then
+    # ---- Random Domain ----
     clear
     show_banner
     echo -e "[ ${BGreen}✓ INFO${NC} ] Generating random domain..."
@@ -256,9 +275,15 @@ if [[ "$dns" == "1" ]]; then
     chmod +x /root/cf
     bash /root/cf | tee /root/install.log
     echo -e "[ ${BGreen}✓ SUCCESS${NC} ] Random Domain Setup Complete"
+
 elif [[ "$dns" == "2" ]]; then
+    # ---- Custom Domain ----
     read -rp " Enter Your Domain : " dom
     dom="${dom//[[:space:]]/}"
+    if [ -z "$dom" ]; then
+        echo -e "${BRed}✗ ERROR:${NC} Domain cannot be empty"
+        exit 1
+    fi
     mkdir -p /etc/xray /etc/v2ray
     echo "$dom" > /root/scdomain
     echo "$dom" > /etc/xray/scdomain
@@ -266,15 +291,41 @@ elif [[ "$dns" == "2" ]]; then
     echo "$dom" > /etc/v2ray/domain
     echo "$dom" > /root/domain
     echo "IP=$dom" > /var/lib/ipvps.conf
+    echo -e "[ ${BGreen}✓ SUCCESS${NC} ] Custom Domain Setup Complete"
+
+elif [[ "$dns" == "3" ]]; then
+    # ---- Reuse Previous Domain ----
+    if [ -z "$PREVIOUS_DOMAIN" ]; then
+        echo ""
+        echo -e "${BRed}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${BRed}║${BWhite}  ✗ NO PREVIOUS DOMAIN FOUND!                             ${BRed}║${NC}"
+        echo -e "${BRed}║${BWhite}                                                          ${BRed}║${NC}"
+        echo -e "${BRed}║${BWhite}  No domain file exists in /root/domain                    ${BRed}║${NC}"
+        echo -e "${BRed}║${BWhite}  Please select option 1 (Random) or 2 (Custom)           ${BRed}║${NC}"
+        echo -e "${BRed}║${BWhite}  to add a new domain.                                    ${BRed}║${NC}"
+        echo -e "${BRed}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        exit 1
+    fi
+    # Reuse the domain
+    mkdir -p /etc/xray /etc/v2ray
+    echo "$PREVIOUS_DOMAIN" > /root/scdomain
+    echo "$PREVIOUS_DOMAIN" > /etc/xray/scdomain
+    echo "$PREVIOUS_DOMAIN" > /etc/xray/domain
+    echo "$PREVIOUS_DOMAIN" > /etc/v2ray/domain
+    echo "IP=$PREVIOUS_DOMAIN" > /var/lib/ipvps.conf
+    echo -e "[ ${BGreen}✓ SUCCESS${NC} ] Re-using previous domain: ${BYellow}${PREVIOUS_DOMAIN}${NC}"
+
 else
-    echo -e "${BRed}✗ ERROR:${NC} Invalid Option"
+    echo -e "${BRed}✗ ERROR:${NC} Invalid Option. Please choose 1, 2, or 3."
     exit 1
 fi
+
 echo -e "${BGreen}✓ Done!${NC}"
 sleep 2
 clear
 
-# ---------- NEW: DOWNLOAD & RUN create-cert.sh ----------
+# ---------- DOWNLOAD & RUN create-cert.sh ----------
 echo -e "${BYellow}┌──────────────────────────────────────────────────────────┐${NC}"
 echo -e "${BGreen}│  [CERT] Creating unified SSL certificate                │${NC}"
 echo -e "${BYellow}└──────────────────────────────────────────────────────────┘${NC}"
@@ -283,6 +334,7 @@ clear
 show_banner
 echo -e "${BGreen}▶ Creating certificate (Let's Encrypt or self-signed)...${NC}"
 wget -q -O /usr/local/bin/create-cert.sh "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/create-cert.sh"
+sed -i 's/\r$//' /usr/local/bin/create-cert.sh
 chmod +x /usr/local/bin/create-cert.sh
 bash /usr/local/bin/create-cert.sh
 print_success "Certificate ready for Stunnel & Xray"
@@ -296,6 +348,7 @@ clear
 show_banner
 echo -e "${BGreen}▶ Installing SSH & VPN...${NC}"
 wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/ssh-vpn.sh -O ssh-vpn.sh
+sed -i 's/\r$//' ssh-vpn.sh
 chmod +x ssh-vpn.sh
 bash ssh-vpn.sh
 
@@ -307,6 +360,7 @@ clear
 show_banner
 echo -e "${BGreen}▶ Installing SSH WebSocket...${NC}"
 wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/sshws/insshws.sh -O insshws.sh
+sed -i 's/\r$//' insshws.sh
 chmod +x insshws.sh
 bash insshws.sh
 
@@ -318,10 +372,11 @@ clear
 show_banner
 echo -e "${BGreen}▶ Installing Xray...${NC}"
 wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/ins-xray.sh -O ins-xray.sh
+sed -i 's/\r$//' ins-xray.sh
 chmod +x ins-xray.sh
 bash ins-xray.sh
 
-# Final steps (same as original)
+# Final steps
 clear
 cat > /root/.profile << END
 # ~/.profile: executed by Bourne-compatible login shells.
