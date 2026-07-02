@@ -15,8 +15,10 @@ clear
 echo ""
 date
 echo ""
-domain=$(cat /root/domain.txt 2>/dev/null)
-if [ -z "$domain" ]; then
+domain=$(cat /root/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null)
+domain=$(echo "$domain" | tr -d '[:space:]')
+
+if [[ -z "$domain" ]]; then
     echo -e "\e[1;31mERROR: Domain not found! Please run setup.sh first.\e[0m"
     exit 1
 fi
