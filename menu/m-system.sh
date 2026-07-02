@@ -2,35 +2,68 @@
 MYIP=$(wget -qO- ipv4.icanhazip.com);
 echo "Checking VPS"
 clear
-echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "\E[0;100;33m          • SYSTEM MENU •          \E[0m"
-echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+
+# ---------- COLOURS ----------
+purple='\033[0;35m'
+blue='\033[0;34m'
+green='\033[0;32m'
+cyan='\033[1;36m'
+yellow='\033[1;33m'
+red='\033[1;31m'
+white='\033[1;37m'
+NC='\033[0m'
+
+# ============================================================
+# UNIFIED MARCSCRIPT BANNER
+# ============================================================
+echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${purple}║${white}     ███╗   ███╗ █████╗ ██████╗  ██████╗███████╗${purple}║${NC}"
+echo -e "${purple}║${white}     ████╗ ████║██╔══██╗██╔══██╗██╔════╝██╔════╝${purple}║${NC}"
+echo -e "${purple}║${white}     ██╔████╔██║███████║██████╔╝██║     ███████╗${purple}║${NC}"
+echo -e "${purple}║${white}     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║${purple}║${NC}"
+echo -e "${purple}║${white}     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║${purple}║${NC}"
+echo -e "${purple}║${white}     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝${purple}║${NC}"
+echo -e "${purple}║${cyan}                    • SYSTEM SETUP MENU •                     ${purple}║${NC}"
+echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+echo -e " [ ${cyan}01${NC} ] Domain Panel"
+echo -e " [ ${cyan}02${NC} ] VPS Speedtest"
+echo -e " [ ${cyan}03${NC} ] Set Auto Reboot"
+echo -e " [ ${cyan}04${NC} ] Restart All Services"
+echo -e " [ ${cyan}05${NC} ] Check Bandwidth"
+echo -e " [ ${cyan}06${NC} ] Install TCP BBR"
+echo -e " [ ${cyan}07${NC} ] DNS Changer"
+echo -e " [ ${cyan}08${NC} ] Edit Script Banner"
+echo ""
+echo -e " [ ${red}00${NC} ] ${red}BACK TO MAIN MENU${NC}"
+echo ""
+echo -e " Press ${yellow}x${NC} or [ ${yellow}Ctrl+C${NC} ] to Exit"
+echo ""
+echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+read -p " Select menu [0-8 or x]: " opt
 echo -e ""
-echo -e " [\e[36m•1\e[0m] Domain Panel"
-echo -e " [\e[36m•2\e[0m] VPS Speedtest"
-echo -e " [\e[36m•3\e[0m] Set Auto Reboot"
-echo -e " [\e[36m•4\e[0m] Restart All Services"
-echo -e " [\e[36m•5\e[0m] Check Bandwidth"
-echo -e " [\e[36m•6\e[0m] Install TCP BBR"
-echo -e " [\e[36m•7\e[0m] DNS Changer"
-echo -e ""
-echo -e " [\e[31m•0\e[0m] \e[31mBACK TO MENU\033[0m"
-echo -e   ""
-echo -e   "Press x or [ Ctrl+C ] • To-Exit"
-echo -e   ""
-echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e ""
-read -p " Select menu : " opt
-echo -e ""
+
 case $opt in
-1) clear ; m-domain ; exit ;;
-2) clear ; speedtest ; exit ;;
-3) clear ; auto-reboot ; exit ;;
-4) clear ; restart ; exit ;;
-5) clear ; bw ; exit ;;
-6) clear ; m-tcp ; exit ;;
-7) clear ; m-dns ; exit ;;
-0) clear ; menu ; exit ;;
-x) exit ;;
-*) echo -e "" ; echo "You pressed wrong key" ; sleep 1 ; m-system ;;
+1|01) clear ; m-domain ; exit ;;
+2|02) clear ; speedtest ; exit ;;
+3|03) clear ; auto-reboot ; exit ;;
+4|04) clear ; restart ; exit ;;
+5|05) clear ; bw ; exit ;;
+6|06) clear ; m-tcp ; exit ;;
+7|07) clear ; m-dns ; exit ;;
+8|08) 
+    # Dynamically opens this exact menu script file inside the nano text editor
+    SCRIPT_PATH=$(readlink -f "$0" 2>/dev/null || echo "$BASH_SOURCE")
+    clear
+    nano "$SCRIPT_PATH"
+    clear
+    exec bash "$SCRIPT_PATH"
+    exit 
+    ;;
+0|00) clear ; menu ; exit ;;
+x|X) exit ;;
+*) echo -e "" ; echo -e "${red}You pressed the wrong key!${NC}" ; sleep 1 ; exec bash "$0" ;;
 esac
