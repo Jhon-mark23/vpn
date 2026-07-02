@@ -1,32 +1,35 @@
+#!/bin/bash
 domain=$(cat /etc/xray/domain)
-tls="$(cat ~/log-install.txt | grep -w "Trojan WS TLS" | cut -d: -f2|sed 's/ //g')"
-ntls="$(cat ~/log-install.txt | grep -w "Trojan WS none TLS" | cut -d: -f2|sed 's/ //g')"
-user=trial`</dev/urandom tr -dc X-Z0-9 | head -c4`
+tls="443"
+ntls="80"
+user=trial$(tr -dc 'A-Z0-9' </dev/urandom | head -c4)
 uuid=$(cat /proc/sys/kernel/random/uuid)
 masaaktif=1
-exp=`date -d "$masaaktif days" +"%Y-%m-%d"`
+exp=$(date -d "$masaaktif days" +"%Y-%m-%d")
+
 sed -i '/#trojanws$/a\#! '"$user $exp"'\
 },{"password": "'""$uuid""'","email": "'""$user""'"' /etc/xray/config.json
 sed -i '/#trojangrpc$/a\#! '"$user $exp"'\
 },{"password": "'""$uuid""'","email": "'""$user""'"' /etc/xray/config.json
 
-systemctl restart xray
-trojanlink1="trojan://${uuid}@${domain}:${tls}?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=bug.com#${user}"
-trojanlink="trojan://${uuid}@isi_bug_disini:${tls}?path=%2Ftrojan-ws&security=tls&host=${domain}&type=ws&sni=${domain}#${user}"
-trojanlink2="trojan://${uuid}@isi_bug_disini:${ntls}?path=%2Ftrojan-ws&security=tls&host=${domain}&type=ws#${user}"
+trojanlink="trojan://${uuid}@bug.com.${domain}:${tls}?path=%2Ftrojan-ws&security=tls&host=${domain}&type=ws&sni=bug.com.${domain}#${user}"
+trojanlink2="trojan://${uuid}@bug.com.${domain}:${ntls}?path=%2Ftrojan-ws&security=none&host=${domain}&type=ws#${user}"
+trojanlink1="trojan://${uuid}@${domain}:${tls}?mode=gun&security=tls&type=grpc&serviceName=trojan-grpc&sni=bug.com.${domain}#${user}"
+
+systemctl restart xray > /dev/null 2>&1
 clear
 echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "\E[0;41;36m           TRIAL TROJAN           \E[0m"
+echo -e "\E[0;41;36m      Trial Trojan Account       \E[0m"
 echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 echo -e "Remarks        : ${user}"
-echo -e "Host/IP        : ${domain}"
-echo -e "Wildcard       : (bug.com).${domain}"
+echo -e "Domain         : ${domain}"
+echo -e "SNI / Host     : bug.com.${domain}"
 echo -e "Port TLS       : ${tls}"
 echo -e "Port none TLS  : ${ntls}"
-echo -e "Port gRPC      : ${tls}"
-echo -e "Key            : ${uuid}"
+echo -e "Password       : ${uuid}"
+echo -e "Network        : ws / grpc"
 echo -e "Path           : /trojan-ws"
-echo -e "ServiceName    : trojan-grpc"
+echo -e "Service Name   : trojan-grpc"
 echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 echo -e "Link TLS       : ${trojanlink}"
 echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
@@ -36,7 +39,5 @@ echo -e "Link gRPC      : ${trojanlink1}"
 echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 echo -e "Expired On     : $exp"
 echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo ""
 read -n 1 -s -r -p "Press any key to back on menu"
-
 menu
