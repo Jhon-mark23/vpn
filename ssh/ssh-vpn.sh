@@ -376,6 +376,19 @@ Powered by OpenSSH • Xray-Core • Nginx • Stunnel
 EOF
     
     echo "Banner /etc/ssh/ssh_banner" >> /etc/ssh/sshd_config
+    # Backup first
+cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+
+# Append clean, compatible algorithms safely
+cat << 'EOF' >> /etc/ssh/sshd_config
+
+# --- MARCSCRIPT PROTOCOL COMPATIBILITY ENGINE ---
+KexAlgorithms +diffie-hellman-group-exchange-sha256
+Ciphers +aes128-ctr,aes192-ctr,aes256-ctr
+HostKeyAlgorithms +ssh-rsa
+PubkeyAcceptedAlgorithms +ssh-rsa
+EOF
+
 
     # Validate configuration syntax cleanly
     sshd -t >> "$LOG_FILE" 2>&1 || {
