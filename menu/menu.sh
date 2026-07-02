@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
 # MARCSCRIPT VPN SYSTEM - MAIN INTERACTIVE SYSTEM DASHBOARD
-# With OpenVPN Integration via m-ovpn.sh
+# With OpenVPN3 Integration
 # ============================================================
 
 MYIP=$(curl -sS ifconfig.me)
@@ -51,18 +51,27 @@ os_name=$(hostnamectl | grep "Operating System" | cut -d ':' -f2 | sed 's/^[ \t]
 tram=$( free -m | awk 'NR==2 {print $2}' )
 uram=$( free -m | awk 'NR==2 {print $3}' )
 
-# OpenVPN Status Check Engine
+# OpenVPN3 Status Check Engine
+ovpn_display="N/A"
+ovpn_status="${yellow}Not Installed${NC}"
+
 if systemctl is-active --quiet openvpn@server-tcp 2>/dev/null; then
-    ovpn_status="${green}Active${NC}"
     ovpn_tcp_port=$(grep "^port " /etc/openvpn/server-tcp.conf 2>/dev/null | awk '{print $2}')
     ovpn_udp_port=$(grep "^port " /etc/openvpn/server-udp.conf 2>/dev/null | awk '{print $2}')
-    ovpn_info="TCP:${ovpn_tcp_port:-1194}/UDP:${ovpn_udp_port:-2200}"
-    # Count OVPN users
     ovpn_users=$(grep -c ":active" /etc/openvpn/client-configs/users.db 2>/dev/null || echo "0")
-    ovpn_display="${ovpn_info} [${ovpn_users} users]"
-else
-    ovpn_status="${yellow}Not Installed${NC}"
-    ovpn_display="N/A"
+    
+    # Check OpenVPN3 binary
+    if [ -x /usr/local/bin/ovpncli ]; then
+        ovpn3_ver=$(/usr/local/bin/ovpncli --version 2>/dev/null | head -1 | awk '{print $NF}' || echo "v3")
+        ovpn_display="TCP:${ovpn_tcp_port:-1194}/UDP:${ovpn_udp_port:-2200} [${ovpn_users}👤]"
+        ovpn_status="${green}Active${NC} (OVPN3)"
+    else
+        ovpn_display="TCP:${ovpn_tcp_port:-1194}/UDP:${ovpn_udp_port:-2200} [${ovpn_users}👤]"
+        ovpn_status="${green}Active${NC}"
+    fi
+elif [ -x /usr/local/bin/ovpncli ]; then
+    ovpn_display="Client Only"
+    ovpn_status="${yellow}Client${NC}"
 fi
 
 # Client System Metadata Profile
@@ -79,7 +88,7 @@ echo -e "${purple}║${white}     ██╔████╔██║████�
 echo -e "${purple}║${white}     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║${purple}║${NC}"
 echo -e "${purple}║${white}     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║${purple}║${NC}"
 echo -e "${purple}║${white}     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝${purple}║${NC}"
-echo -e "${purple}║${cyan}                     • CORE DASHBOARD PANEL •                  ${purple}║${NC}"
+echo -e "${purple}║${cyan}                  • CORE DASHBOARD PANEL •                     ${purple}║${NC}"
 echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -91,7 +100,7 @@ printf "  ${white}%-14s${NC} : %-42s\n" "System Uptime" "$uptime"
 printf "  ${white}%-14s${NC} : %-42s\n" "Public IP" "$MYIP"
 printf "  ${white}%-14s${NC} : %-42s\n" "Active Domain" "$domain"
 printf "  ${white}%-14s${NC} : %-42s\n" "Memory Capacity" "$uram MB / $tram MB"
-printf "  ${white}%-14s${NC} : %-42s\n" "OpenVPN" "$ovpn_display"
+printf "  ${white}%-14s${NC} : %-42s\n" "OpenVPN3" "$ovpn_display"
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -101,7 +110,7 @@ echo -e " [ ${cyan}02${NC} ] Xray Vmess Menu         ${purple}→ Ports: 80, 443
 echo -e " [ ${cyan}03${NC} ] Xray Vless Menu         ${purple}→ Ports: 80, 443${NC}"
 echo -e " [ ${cyan}04${NC} ] Xray Trojan Menu        ${purple}→ Ports: 80, 443${NC}"
 echo -e " [ ${cyan}05${NC} ] Xray Shadowsocks Menu   ${purple}→ Ports: 80, 443${NC}"
-echo -e " [ ${cyan}06${NC} ] OpenVPN Manager         ${purple}→ Ports: TCP 1194, UDP 2200${NC}"
+echo -e " [ ${cyan}06${NC} ] OpenVPN3 Manager        ${purple}→ TCP:1194, UDP:2200${NC}"
 echo -e " [ ${cyan}07${NC} ] Server Settings Menu    ${purple}→ Automation & Tweaks${NC}"
 echo -e " [ ${cyan}08${NC} ] Check Services Status   ${purple}→ Engine Diagnostics${NC}"
 echo -e " [ ${cyan}09${NC} ] Flush System RAM Cache  ${purple}→ Free volatile memory${NC}"
@@ -112,7 +121,7 @@ echo ""
 echo -e " Press ${yellow}x${NC} or [ ${yellow}Ctrl+C${NC} ] to Exit"
 echo ""
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e " ${cyan}Client Holder :${NC} ${white}$Name${NC}   | ${cyan}Expiry :${NC} ${green}$Exp2${NC} | ${cyan}SSL :${NC} ${yellow}$tlsStatus${NC} | ${cyan}OVPN :${NC} $ovpn_status"
+echo -e " ${cyan}Client :${NC} ${white}$Name${NC} | ${cyan}Expiry :${NC} ${green}$Exp2${NC} | ${cyan}SSL :${NC} ${yellow}$tlsStatus${NC} | ${cyan}OVPN :${NC} $ovpn_status"
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -142,55 +151,47 @@ case $opt in
     ;;
 6|06) 
     clear
-    # OpenVPN Menu via m-ovpn.sh
+    # OpenVPN3 Menu via m-ovpn shortcut
     if command -v m-ovpn &>/dev/null; then
         m-ovpn
-    elif [ -f /root/ovpn/menu-ovpn.sh ]; then
-        bash /root/ovpn/menu-ovpn.sh
     elif [ -f /usr/local/bin/m-ovpn ]; then
         bash /usr/local/bin/m-ovpn
+    elif [ -f /root/ovpn/menu-ovpn.sh ]; then
+        bash /root/ovpn/menu-ovpn.sh
     else
         echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${purple}║${yellow}              🔐 OPENVPN MANAGER - NOT INSTALLED              ${purple}║${NC}"
+        echo -e "${purple}║${yellow}           🔐 OPENVPN3 MANAGER - NOT INSTALLED                ${purple}║${NC}"
         echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
         echo ""
-        echo -e " ${red}⚠${NC} OpenVPN is not detected on this system."
+        echo -e " ${red}⚠${NC} OpenVPN3 is not detected on this system."
         echo ""
-        echo -e " ${green}📡 OpenVPN Features:${NC}"
-        echo -e "  • TCP Port: 1194"
-        echo -e "  • UDP Port: 2200"
-        echo -e "  • No conflict with existing services"
+        echo -e " ${green}📡 OpenVPN3 Features:${NC}"
+        echo -e "  • TCP Port: 1194 | UDP Port: 2200"
+        echo -e "  • No conflict with SSH/Xray/Dropbear"
+        echo -e "  • Pre-compiled OpenVPN3 binary"
         echo -e "  • User management with expiration"
-        echo -e "  • Auto-expiration check"
+        echo -e "  • Auto-expiration check (hourly)"
         echo ""
-        echo -e " ${cyan}Quick Install Options:${NC}"
-        echo ""
-        echo -e " ${green}Option 1:${NC} Direct install"
-        echo -e "  wget -qO- https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ovpn/install-ovpn.sh | bash"
-        echo ""
-        echo -e " ${green}Option 2:${NC} Download then install"
-        echo -e "  wget https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ovpn/install-ovpn.sh"
-        echo -e "  bash install-ovpn.sh"
+        echo -e " ${cyan}⚡ Quick Install:${NC}"
+        echo -e "  ${yellow}wget -qO- https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ovpn/install-ovpn.sh | bash${NC}"
         echo ""
         echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        read -p " Install OpenVPN now? (y/n): " -n 1 -r
+        read -p " Install OpenVPN3 now? (y/n): " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             echo ""
-            echo -e " [ ${cyan}•${NC} ] Downloading OpenVPN installer from GitHub..."
-            wget -q -O /tmp/install-ovpn.sh https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ovpn/install-ovpn.sh
+            echo -e " [ ${cyan}•${NC} ] Downloading OpenVPN3 installer..."
+            wget -q -O /tmp/install-ovpn.sh https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ovpn/install-ovpn.sh
             if [ $? -eq 0 ]; then
                 chmod +x /tmp/install-ovpn.sh
-                echo -e " [ ${green}✓${NC} ] Installer downloaded successfully"
-                echo -e " [ ${cyan}•${NC} ] Starting installation..."
+                echo -e " [ ${green}✓${NC} ] Installer downloaded"
+                echo -e " [ ${cyan}•${NC} ] Starting OpenVPN3 installation..."
                 sleep 1
                 bash /tmp/install-ovpn.sh
-                # Reload menu after installation
                 menu
             else
                 echo -e " [ ${red}✗${NC} ] Failed to download installer!"
-                echo -e " Check your internet connection or GitHub repository."
-                sleep 3
+                sleep 2
                 menu
             fi
         else
@@ -213,7 +214,7 @@ case $opt in
 10) 
     clear
     echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${purple}║${yellow}                  🔄 UPGRADE CORE ENGINE SYSTEM               ${purple}║${NC}"
+    echo -e "${purple}║${yellow}               🔄 UPGRADE CORE ENGINE SYSTEM                  ${purple}║${NC}"
     echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e " This operation will patch/reinstall all underlying architecture:"
@@ -222,7 +223,7 @@ case $opt in
     echo -e "  ${green}✅${NC} Core Xray Engine Configurations Framework"
     echo -e "  ${green}✅${NC} Interactive Menu Systems Management Layer"
     echo -e "  ${green}✅${NC} All default proxy endpoints configuration structures"
-    echo -e "  ${green}✅${NC} OpenVPN management scripts & menu shortcuts"
+    echo -e "  ${green}✅${NC} OpenVPN3 management scripts & menu shortcuts"
     echo ""
     echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     read -p " Initialize remote upgrade runtime execution? (y/n): " -n 1 -r
@@ -242,6 +243,7 @@ case $opt in
         cp -r /etc/nginx "$BACKUP_DIR/" 2>/dev/null || true
         cp -r /etc/squid "$BACKUP_DIR/" 2>/dev/null || true
         cp -r /etc/openvpn "$BACKUP_DIR/" 2>/dev/null || true
+        cp -r /root/ovpn "$BACKUP_DIR/" 2>/dev/null || true
         cp -f /etc/ssh/sshd_config "$BACKUP_DIR/" 2>/dev/null || true
         cp -f /root/domain "$BACKUP_DIR/" 2>/dev/null || true
         cp -f /root/domain.txt "$BACKUP_DIR/" 2>/dev/null || true
@@ -277,11 +279,20 @@ case $opt in
             wget -q -O running https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/menu/running.sh
             wget -q -O clearcache https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/menu/clearcache.sh
             chmod +x menu m-ovpn running clearcache
+            sed -i -e 's/\r$//' menu m-ovpn running clearcache
+            
+            # Download OpenVPN3 management scripts
+            mkdir -p /root/ovpn
+            for script in create-user.sh renew-user.sh delete-user.sh list-user.sh menu-ovpn.sh check-expired.sh; do
+                wget -q -O "/root/ovpn/$script" "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ovpn/$script" 2>/dev/null
+                chmod +x "/root/ovpn/$script" 2>/dev/null
+                sed -i -e 's/\r$//' "/root/ovpn/$script" 2>/dev/null
+            done
         fi
         
         echo ""
         echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${green}               🏆 ECOSYSTEM UPGRADE EXECUTED CLEANLY!        ${NC}"
+        echo -e "${green}            🏆 ECOSYSTEM UPGRADE EXECUTED CLEANLY!             ${NC}"
         echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo ""
         echo -e " Backup reference archive pointer preserved at: ${yellow}$BACKUP_DIR${NC}"

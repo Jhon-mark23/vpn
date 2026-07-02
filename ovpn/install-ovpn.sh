@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================================
-# MARCSCRIPT OPENVPN INSTALLER
+# MARCSCRIPT OPENVPN INSTALLER (OpenVPN3 Binary)
 # No conflict with SSH (22,80,443,etc) & Xray (443,80)
-# Uses centralized certificate from create-cert.sh
+# Uses pre-compiled OpenVPN3 binary from GitHub
 # Ports: TCP 1194, UDP 2200
 # ============================================================
 
@@ -23,34 +23,33 @@ print_success(){ echo -e "[ ${BLUE}OK${NC} ] $1"; }
 print_step()  { echo -e "[ ${CYAN}STEP${NC} ] $1"; }
 
 # ============================================================
-# CONFIGURATION - NO CONFLICT PORTS
+# CONFIGURATION
 # ============================================================
+GITHUB_RAW="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
 OVPN_DIR="/etc/openvpn"
 OVPN_CLIENT_DIR="/etc/openvpn/client-configs"
 OVPN_LOG_DIR="/var/log/openvpn"
 EASYRSA_DIR="/etc/openvpn/easy-rsa"
 CERT_DIR="/etc/ssl/vpn"
+USER_DB="$OVPN_CLIENT_DIR/users.db"
 
-# Non-conflicting ports (SSH uses 22,80,443 / Xray uses 443,80 / Dropbear 109,143)
-OVPN_TCP_PORT="1194"    # Standard OpenVPN TCP port
-OVPN_UDP_PORT="2200"    # Non-standard to avoid conflicts
-OVPN_MGMT_PORT="7505"   # Management interface (localhost only)
+# Non-conflicting ports
+OVPN_TCP_PORT="1194"
+OVPN_UDP_PORT="2200"
+OVPN_MGMT_PORT="7505"
 
-# Network subnets (non-conflicting with your existing 10.8.0.0/24 etc)
+# Network subnets
 OVPN_NET_TCP="10.30.0"
 OVPN_NET_UDP="10.40.0"
 OVPN_NETMASK="255.255.255.0"
 
-# GitHub base URL for downloading scripts
-GITHUB_BASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ovpn"
 SERVER_IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
-USER_DB="$OVPN_CLIENT_DIR/users.db"
 
 # ============================================================
-# CHECK ROOT & EXISTING SERVICES
+# CHECK REQUIREMENTS
 # ============================================================
 check_requirements() {
-    print_info "Checking requirements..."
+    print_step "Checking requirements..."
     
     # Check root
     if [ "$EUID" -ne 0 ]; then
@@ -59,20 +58,22 @@ check_requirements() {
     fi
     
     # Check if already installed
-    if [ -f /etc/openvpn/server-tcp.conf ]; then
-        print_warn "OpenVPN appears to be already installed!"
+    if [ -f /etc/openvpn/server-tcp.conf ] && systemctl is-active --quiet openvpn@server-tcp 2>/dev/null; then
+        print_warn "OpenVPN appears to be already installed and running!"
         read -p "Reinstall? (y/n): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 0
         fi
+        print_info "Stopping existing OpenVPN services..."
+        systemctl stop openvpn@server-tcp openvpn@server-udp 2>/dev/null || true
     fi
     
     # Check port conflicts
     print_info "Checking port availability..."
     for port in $OVPN_TCP_PORT $OVPN_UDP_PORT; do
         if ss -tuln | grep -q ":$port "; then
-            print_warn "Port $port is in use! Checking what's using it..."
+            print_warn "Port $port is in use!"
             ss -tulnp | grep ":$port "
             read -p "Continue anyway? (y/n): " -n 1 -r
             echo
@@ -82,27 +83,90 @@ check_requirements() {
         fi
     done
     
-    # Check if certificate exists (from your create-cert.sh)
-    if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
-        print_success "Found existing certificate in $CERT_DIR"
-        USE_EXISTING_CERT=true
-    else
-        print_warn "No certificate found. Run create-cert.sh first or we'll generate self-signed"
-        USE_EXISTING_CERT=false
-    fi
-    
-    print_success "All checks passed"
+    print_success "Requirements check passed"
 }
 
 # ============================================================
-# INSTALL OPENVPN PACKAGES
+# INSTALL OPENVPN3 BINARY FROM GITHUB
+# ============================================================
+install_openvpn3_binary() {
+    print_step "Installing OpenVPN3 binary from GitHub..."
+    
+    # Create directories
+    mkdir -p /usr/local/bin
+    
+    # Check if binary already exists
+    if [ -f /usr/local/bin/ovpncli ] && [ -x /usr/local/bin/ovpncli ]; then
+        print_info "OpenVPN3 binary already exists at /usr/local/bin/ovpncli"
+        read -p "Re-download? (y/n): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_info "Skipping binary download"
+            return 0
+        fi
+    fi
+    
+    # Download OpenVPN3 binary
+    print_info "Downloading OpenVPN3 binary (ovpncli)..."
+    wget -q -O /usr/local/bin/ovpncli "$GITHUB_RAW/ovpn/binaries/ovpncli" 2>/dev/null || {
+        # Try stripped version if full binary not available
+        print_warn "Full binary not found, trying stripped version..."
+        wget -q -O /usr/local/bin/ovpncli "$GITHUB_RAW/ovpn/binaries/ovpnclis" 2>/dev/null || {
+            # Try DEB package
+            print_warn "Binary not found, trying DEB package..."
+            wget -q -O /tmp/openvpn3.deb "$GITHUB_RAW/ovpn/binaries/openvpn3_1.0_amd64.deb" 2>/dev/null && {
+                print_info "Installing from DEB package..."
+                dpkg -i /tmp/openvpn3.deb 2>/dev/null || apt install -y /tmp/openvpn3.deb 2>/dev/null
+                rm -f /tmp/openvpn3.deb
+            } || {
+                print_error "Failed to download OpenVPN3 binary!"
+                print_error "URL: $GITHUB_RAW/ovpn/binaries/ovpncli"
+                print_error "Please check your GitHub repository"
+                exit 1
+            }
+        }
+    }
+    
+    # Make executable
+    chmod 755 /usr/local/bin/ovpncli 2>/dev/null
+    
+    # Create symlinks
+    ln -sf /usr/local/bin/ovpncli /usr/bin/ovpncli 2>/dev/null || true
+    ln -sf /usr/local/bin/ovpncli /usr/local/bin/openvpn3 2>/dev/null || true
+    
+    # Verify binary works
+    if [ -x /usr/local/bin/ovpncli ]; then
+        print_info "Testing OpenVPN3 binary..."
+        if /usr/local/bin/ovpncli --version 2>/dev/null || /usr/local/bin/ovpncli -h 2>/dev/null | head -1 | grep -q "OpenVPN"; then
+            print_success "OpenVPN3 binary installed and working!"
+        else
+            print_warn "Binary installed but version check failed (may still work)"
+        fi
+    else
+        print_error "Binary installation failed!"
+        exit 1
+    fi
+    
+    # Install runtime dependencies if needed
+    print_info "Checking runtime dependencies..."
+    MISSING_LIBS=$(ldd /usr/local/bin/ovpncli 2>/dev/null | grep "not found" | wc -l)
+    if [ $MISSING_LIBS -gt 0 ]; then
+        print_warn "Missing $MISSING_LIBS libraries. Installing dependencies..."
+        apt update -y
+        apt install -y libssl3 liblz4-1 libxxhash0 libfmt9 libjsoncpp25 2>/dev/null || \
+        apt install -y libssl-dev liblz4-dev libxxhash-dev libfmt-dev libjsoncpp-dev 2>/dev/null || true
+    fi
+}
+
+# ============================================================
+# INSTALL OPENVPN SERVER PACKAGES
 # ============================================================
 install_packages() {
-    print_step "Installing OpenVPN packages..."
+    print_step "Installing OpenVPN server packages..."
     
     apt update -y
     
-    # Install OpenVPN and dependencies
+    # Install OpenVPN server and tools
     apt install -y --no-install-recommends \
         openvpn \
         easy-rsa \
@@ -112,26 +176,25 @@ install_packages() {
         curl \
         openssl
     
-    print_success "Packages installed"
+    print_success "Server packages installed"
 }
 
 # ============================================================
-# SETUP EASY-RSA (Certificate Authority)
+# SETUP EASY-RSA
 # ============================================================
 setup_easyrsa() {
-    print_step "Setting up Easy-RSA..."
+    print_step "Setting up Easy-RSA Certificate Authority..."
     
-    # Remove old if exists and reinstall requested
+    # Backup old if exists
     if [ -d "$EASYRSA_DIR" ]; then
-        mv "$EASYRSA_DIR" "${EASYRSA_DIR}.backup.$(date +%s)"
+        mv "$EASYRSA_DIR" "${EASYRSA_DIR}.backup.$(date +%s)" 2>/dev/null
     fi
     
     make-cadir "$EASYRSA_DIR"
     cd "$EASYRSA_DIR"
     
-    # Configure Easy-RSA variables
+    # Configure Easy-RSA
     cat > vars <<EOF
-# Easy-RSA Configuration for MarcScript OpenVPN
 set_var EASYRSA_REQ_COUNTRY    "PH"
 set_var EASYRSA_REQ_PROVINCE   "Metro Manila"
 set_var EASYRSA_REQ_CITY       "Manila"
@@ -144,31 +207,23 @@ set_var EASYRSA_CA_EXPIRE      3650
 set_var EASYRSA_CERT_EXPIRE    365
 EOF
 
-    # Initialize PKI
-    print_info "Initializing PKI..."
+    print_info "Building PKI infrastructure..."
     ./easyrsa init-pki
-    
-    # Build Certificate Authority
-    print_info "Building Certificate Authority..."
     ./easyrsa --batch build-ca nopass
     
-    # Generate server certificate
     print_info "Generating server certificate..."
     ./easyrsa --batch gen-req server nopass
     ./easyrsa --batch sign-req server server
     
-    # Generate Diffie-Hellman parameters
-    print_info "Generating DH parameters (this may take a moment)..."
+    print_info "Generating DH parameters (may take time)..."
     ./easyrsa --batch gen-dh
     
-    # Generate TLS authentication key
     print_info "Generating TLS auth key..."
     openvpn --genkey --secret "$EASYRSA_DIR/pki/ta.key"
     
-    # Generate Certificate Revocation List
     ./easyrsa gen-crl
     
-    # Copy files to OpenVPN directory
+    # Copy to OpenVPN directory
     cp "$EASYRSA_DIR/pki/ca.crt" "$OVPN_DIR/"
     cp "$EASYRSA_DIR/pki/issued/server.crt" "$OVPN_DIR/"
     cp "$EASYRSA_DIR/pki/private/server.key" "$OVPN_DIR/"
@@ -176,36 +231,32 @@ EOF
     cp "$EASYRSA_DIR/pki/ta.key" "$OVPN_DIR/"
     cp "$EASYRSA_DIR/pki/crl.pem" "$OVPN_DIR/"
     
-    chmod 600 "$OVPN_DIR/server.key"
-    chmod 600 "$OVPN_DIR/ta.key"
+    chmod 600 "$OVPN_DIR/server.key" "$OVPN_DIR/ta.key"
     
     print_success "Easy-RSA configured"
 }
 
 # ============================================================
-# CREATE OPENVPN SERVER CONFIGS
+# CREATE SERVER CONFIGS
 # ============================================================
 create_server_configs() {
     print_step "Creating server configurations..."
     
-    # Create log directory
-    mkdir -p "$OVPN_LOG_DIR"
-    mkdir -p "$OVPN_CLIENT_DIR"
+    mkdir -p "$OVPN_LOG_DIR" "$OVPN_CLIENT_DIR"
     
-    # TCP Server Configuration
+    # TCP Server Config
     cat > "$OVPN_DIR/server-tcp.conf" <<EOF
 # ============================================
 # MarcScript OpenVPN TCP Server
 # Port: $OVPN_TCP_PORT
 # Network: ${OVPN_NET_TCP}.0/24
+# Binary: OpenVPN3
 # ============================================
 
-# Basic configuration
 port $OVPN_TCP_PORT
 proto tcp
 dev tun
 
-# Certificates and keys
 ca $OVPN_DIR/ca.crt
 cert $OVPN_DIR/server.crt
 key $OVPN_DIR/server.key
@@ -213,20 +264,15 @@ dh $OVPN_DIR/dh.pem
 tls-auth $OVPN_DIR/ta.key 0
 crl-verify $OVPN_DIR/crl.pem
 
-# Network settings
 topology subnet
 server ${OVPN_NET_TCP}.0 $OVPN_NETMASK
 ifconfig-pool-persist $OVPN_DIR/ipp-tcp.txt
 
-# DNS (using your existing DNS or public)
 push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 8.8.4.4"
 push "dhcp-option DNS 1.1.1.1"
-
-# Redirect all traffic through VPN
 push "redirect-gateway def1 bypass-dhcp"
 
-# Performance and security
 keepalive 10 120
 cipher AES-256-GCM
 auth SHA256
@@ -234,41 +280,33 @@ data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
 compress lz4-v2
 push "compress lz4-v2"
 
-# Limits
 max-clients 50
 user nobody
 group nogroup
-
-# Persistence
 persist-key
 persist-tun
 
-# Logging
 status $OVPN_LOG_DIR/openvpn-tcp-status.log
 log-append $OVPN_LOG_DIR/openvpn-tcp.log
 verb 3
-
-# Notifications
 explicit-exit-notify 1
 
-# Management (localhost only)
 management 127.0.0.1 $OVPN_MGMT_PORT
 EOF
 
-    # UDP Server Configuration
+    # UDP Server Config
     cat > "$OVPN_DIR/server-udp.conf" <<EOF
 # ============================================
 # MarcScript OpenVPN UDP Server
 # Port: $OVPN_UDP_PORT
 # Network: ${OVPN_NET_UDP}.0/24
+# Binary: OpenVPN3
 # ============================================
 
-# Basic configuration
 port $OVPN_UDP_PORT
 proto udp
 dev tun
 
-# Certificates and keys
 ca $OVPN_DIR/ca.crt
 cert $OVPN_DIR/server.crt
 key $OVPN_DIR/server.key
@@ -276,20 +314,15 @@ dh $OVPN_DIR/dh.pem
 tls-auth $OVPN_DIR/ta.key 0
 crl-verify $OVPN_DIR/crl.pem
 
-# Network settings
 topology subnet
 server ${OVPN_NET_UDP}.0 $OVPN_NETMASK
 ifconfig-pool-persist $OVPN_DIR/ipp-udp.txt
 
-# DNS
 push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 8.8.4.4"
 push "dhcp-option DNS 1.1.1.1"
-
-# Redirect all traffic through VPN
 push "redirect-gateway def1 bypass-dhcp"
 
-# Performance and security
 keepalive 10 120
 cipher AES-256-GCM
 auth SHA256
@@ -297,133 +330,85 @@ data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
 compress lz4-v2
 push "compress lz4-v2"
 
-# Limits
 max-clients 50
 user nobody
 group nogroup
-
-# Persistence
 persist-key
 persist-tun
 
-# Logging
 status $OVPN_LOG_DIR/openvpn-udp-status.log
 log-append $OVPN_LOG_DIR/openvpn-udp.log
 verb 3
-
-# Notifications
 explicit-exit-notify 1
 
-# Management (localhost only)
 management 127.0.0.1 $((OVPN_MGMT_PORT + 1))
 EOF
 
-    print_success "Server configurations created"
+    print_success "Server configs created"
 }
 
 # ============================================================
-# CONFIGURE SYSTEM & FIREWALL (NO CONFLICT)
+# CONFIGURE FIREWALL & SYSTEM
 # ============================================================
 configure_system() {
     print_step "Configuring system and firewall..."
     
-    # Enable IP forwarding (required for VPN)
+    # Enable IP forwarding
     if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf; then
         echo '# OpenVPN IP Forwarding' >> /etc/sysctl.conf
         echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
-        echo 'net.ipv6.conf.all.forwarding=1' >> /etc/sysctl.conf
     fi
     sysctl -p >/dev/null 2>&1
     
-    # Get primary network interface
+    # Get network interface
     NIC=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
+    [ -z "$NIC" ] && NIC=$(ip -4 addr show | grep -v "127.0.0.1" | grep "inet " | head -1 | awk '{print $NF}')
     
-    if [ -z "$NIC" ]; then
-        NIC=$(ip -4 addr show | grep -v "127.0.0.1" | grep "inet " | head -1 | awk '{print $NF}')
-    fi
+    print_info "Network interface: $NIC"
     
-    print_info "Using network interface: $NIC"
+    # iptables rules
+    iptables -A INPUT -p tcp --dport $OVPN_TCP_PORT -j ACCEPT 2>/dev/null || true
+    iptables -A INPUT -p udp --dport $OVPN_UDP_PORT -j ACCEPT 2>/dev/null || true
     
-    # ============================================================
-    # FIREWALL RULES - Only for OpenVPN, don't touch existing rules
-    # ============================================================
+    iptables -t nat -A POSTROUTING -s ${OVPN_NET_TCP}.0/24 -o $NIC -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -A POSTROUTING -s ${OVPN_NET_UDP}.0/24 -o $NIC -j MASQUERADE 2>/dev/null || true
     
-    # Check if UFW is active (from your SSH-VPN setup, UFW might be removed)
-    if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
-        print_info "UFW detected, adding rules..."
-        ufw allow $OVPN_TCP_PORT/tcp comment "OpenVPN TCP"
-        ufw allow $OVPN_UDP_PORT/udp comment "OpenVPN UDP"
-    else
-        print_info "Using iptables directly..."
-        
-        # Allow OpenVPN ports (INPUT chain)
-        iptables -A INPUT -p tcp --dport $OVPN_TCP_PORT -j ACCEPT 2>/dev/null || true
-        iptables -A INPUT -p udp --dport $OVPN_UDP_PORT -j ACCEPT 2>/dev/null || true
-        
-        # NAT rules for VPN traffic (POSTROUTING chain)
-        iptables -t nat -A POSTROUTING -s ${OVPN_NET_TCP}.0/24 -o $NIC -j MASQUERADE 2>/dev/null || true
-        iptables -t nat -A POSTROUTING -s ${OVPN_NET_UDP}.0/24 -o $NIC -j MASQUERADE 2>/dev/null || true
-        
-        # Forward rules (FORWARD chain)
-        iptables -A FORWARD -s ${OVPN_NET_TCP}.0/24 -j ACCEPT 2>/dev/null || true
-        iptables -A FORWARD -s ${OVPN_NET_UDP}.0/24 -j ACCEPT 2>/dev/null || true
-        iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
-        
-        # Save rules for persistence
-        mkdir -p /etc/iptables
-        iptables-save > /etc/iptables/rules.v4
-        
-        if command -v netfilter-persistent &>/dev/null; then
-            netfilter-persistent save >/dev/null 2>&1
-        fi
-    fi
+    iptables -A FORWARD -s ${OVPN_NET_TCP}.0/24 -j ACCEPT 2>/dev/null || true
+    iptables -A FORWARD -s ${OVPN_NET_UDP}.0/24 -j ACCEPT 2>/dev/null || true
+    iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
     
-    # Add to rc.local for boot persistence
-    if ! grep -q "OpenVPN iptables" /etc/rc.local 2>/dev/null; then
-        cat >> /etc/rc.local <<'EOF'
-
-# OpenVPN iptables rules
-iptables -t nat -A POSTROUTING -s 10.30.0.0/24 -o $(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1) -j MASQUERADE 2>/dev/null
-iptables -t nat -A POSTROUTING -s 10.40.0.0/24 -o $(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1) -j MASQUERADE 2>/dev/null
-iptables -A FORWARD -s 10.30.0.0/24 -j ACCEPT 2>/dev/null
-iptables -A FORWARD -s 10.40.0.0/24 -j ACCEPT 2>/dev/null
-EOF
-    fi
+    # Save rules
+    mkdir -p /etc/iptables
+    iptables-save > /etc/iptables/rules.v4
+    netfilter-persistent save 2>/dev/null || true
     
-    print_success "System and firewall configured"
+    print_success "System configured"
 }
 
 # ============================================================
-# START OPENVPN SERVICES
+# START SERVICES
 # ============================================================
 start_services() {
     print_step "Starting OpenVPN services..."
     
     systemctl daemon-reload
-    
-    # Enable and start TCP server
-    systemctl enable openvpn@server-tcp 2>/dev/null
-    systemctl start openvpn@server-tcp 2>/dev/null
-    
-    # Enable and start UDP server
-    systemctl enable openvpn@server-udp 2>/dev/null
-    systemctl start openvpn@server-udp 2>/dev/null
+    systemctl enable openvpn@server-tcp openvpn@server-udp 2>/dev/null
+    systemctl start openvpn@server-tcp openvpn@server-udp 2>/dev/null
     
     sleep 3
     
-    # Verify services
     if systemctl is-active --quiet openvpn@server-tcp; then
-        print_success "OpenVPN TCP is running on port $OVPN_TCP_PORT"
+        print_success "OpenVPN TCP running on port $OVPN_TCP_PORT"
     else
-        print_error "OpenVPN TCP failed to start!"
-        journalctl -u openvpn@server-tcp --no-pager -n 10
+        print_error "OpenVPN TCP failed!"
+        journalctl -u openvpn@server-tcp --no-pager -n 5
     fi
     
     if systemctl is-active --quiet openvpn@server-udp; then
-        print_success "OpenVPN UDP is running on port $OVPN_UDP_PORT"
+        print_success "OpenVPN UDP running on port $OVPN_UDP_PORT"
     else
-        print_error "OpenVPN UDP failed to start!"
-        journalctl -u openvpn@server-udp --no-pager -n 10
+        print_error "OpenVPN UDP failed!"
+        journalctl -u openvpn@server-udp --no-pager -n 5
     fi
 }
 
@@ -433,16 +418,14 @@ start_services() {
 download_scripts() {
     print_step "Downloading management scripts..."
     
-    # Create scripts directory
     mkdir -p /root/ovpn
     
     SCRIPTS="create-user.sh renew-user.sh delete-user.sh list-user.sh menu-ovpn.sh check-expired.sh"
     
     for script in $SCRIPTS; do
         print_info "Downloading $script..."
-        wget -q -O "/root/ovpn/$script" "$GITHUB_BASE/$script" 2>/dev/null || {
-            print_warn "Could not download $script from GitHub, creating basic version..."
-            touch "/root/ovpn/$script"
+        wget -q -O "/root/ovpn/$script" "$GITHUB_RAW/ovpn/$script" 2>/dev/null || {
+            print_warn "Could not download $script"
         }
         chmod +x "/root/ovpn/$script" 2>/dev/null
     done
@@ -450,110 +433,77 @@ download_scripts() {
     # Create user database
     touch "$USER_DB"
     
-    # Add to menu if menu.sh exists
-    if [ -f /usr/bin/menu ]; then
-        print_info "Adding OVPN to main menu..."
-        if ! grep -q "menu-ovpn.sh" /usr/bin/menu 2>/dev/null; then
-            # Add OVPN option to menu
-            sed -i '/menu-ssh.sh/a\    "OPENVPN" "OpenVPN Manager" \\' /usr/bin/menu 2>/dev/null || true
-        fi
-    fi
-    
     print_success "Scripts downloaded"
 }
 
 # ============================================================
-# SETUP AUTO-EXPIRATION CHECK
+# SETUP CRON
 # ============================================================
 setup_cron() {
-    print_step "Setting up auto-expiration check..."
+    print_step "Setting up auto-expiration..."
     
-    # Add hourly check to crontab
     if ! crontab -l 2>/dev/null | grep -q "check-expired.sh"; then
         (crontab -l 2>/dev/null; echo "0 * * * * /root/ovpn/check-expired.sh >/dev/null 2>&1") | crontab -
-        print_success "Expiration check scheduled hourly"
-    else
-        print_info "Cron job already exists"
+        print_success "Hourly expiration check enabled"
     fi
 }
 
 # ============================================================
-# DISPLAY INSTALLATION SUMMARY
+# DISPLAY SUMMARY
 # ============================================================
 display_summary() {
     clear
     echo ""
     echo -e "${CYAN}===========================================${NC}"
-    echo -e "${BLUE}   ✅ OPENVPN INSTALLATION COMPLETE!${NC}"
+    echo -e "${BLUE}   ✅ OPENVPN INSTALLED WITH OPENVPN3!${NC}"
     echo -e "${CYAN}===========================================${NC}"
     echo ""
-    echo -e "${GREEN}📡 SERVER INFORMATION:${NC}"
-    echo "   IP Address : $SERVER_IP"
-    echo "   TCP Port   : $OVPN_TCP_PORT"
-    echo "   UDP Port   : $OVPN_UDP_PORT"
+    echo -e "${GREEN}📡 SERVER:${NC}"
+    echo "   IP        : $SERVER_IP"
+    echo "   TCP Port  : $OVPN_TCP_PORT"
+    echo "   UDP Port  : $OVPN_UDP_PORT"
     echo ""
-    echo -e "${GREEN}🌐 NETWORK:${NC}"
-    echo "   TCP Subnet : ${OVPN_NET_TCP}.0/24"
-    echo "   UDP Subnet : ${OVPN_NET_UDP}.0/24"
+    echo -e "${GREEN}🔧 OPENVPN3 BINARY:${NC}"
+    echo "   Location  : /usr/local/bin/ovpncli"
+    echo "   Symlink   : /usr/bin/ovpncli"
+    echo "   Version   : $(/usr/local/bin/ovpncli --version 2>/dev/null | head -1 || echo 'OpenVPN3')"
     echo ""
-    echo -e "${GREEN}📁 CONFIGURATION:${NC}"
-    echo "   Server Dir  : $OVPN_DIR"
-    echo "   Client Dir  : $OVPN_CLIENT_DIR"
-    echo "   Logs Dir    : $OVPN_LOG_DIR"
+    echo -e "${GREEN}📁 DIRECTORIES:${NC}"
+    echo "   Server    : $OVPN_DIR"
+    echo "   Clients   : $OVPN_CLIENT_DIR"
+    echo "   Logs      : $OVPN_LOG_DIR"
     echo ""
-    echo -e "${GREEN}🔧 MANAGEMENT:${NC}"
-    echo "   Create User : bash /root/ovpn/create-user.sh"
-    echo "   OVPN Menu   : bash /root/ovpn/menu-ovpn.sh"
-    echo "   List Users  : bash /root/ovpn/list-user.sh"
-    echo ""
-    echo -e "${GREEN}⚙️  SERVICE CONTROL:${NC}"
-    echo "   TCP Status  : systemctl status openvpn@server-tcp"
-    echo "   UDP Status  : systemctl status openvpn@server-udp"
-    echo "   Restart     : systemctl restart openvpn@server-tcp openvpn@server-udp"
-    echo ""
-    echo -e "${GREEN}🔒 SECURITY:${NC}"
-    echo "   ✓ No port conflict with SSH/Xray/Dropbear"
-    echo "   ✓ Expiration auto-check enabled (hourly)"
-    echo "   ✓ Certificate revocation support"
+    echo -e "${GREEN}👤 MANAGEMENT:${NC}"
+    echo "   Create    : bash /root/ovpn/create-user.sh"
+    echo "   Menu      : bash /root/ovpn/menu-ovpn.sh"
+    echo "   List      : bash /root/ovpn/list-user.sh"
     echo ""
     echo -e "${CYAN}===========================================${NC}"
-    echo -e "${YELLOW}📋 NON-CONFLICTING PORTS:${NC}"
-    echo -e "   ${GREEN}OpenVPN TCP: $OVPN_TCP_PORT${NC}"
-    echo -e "   ${GREEN}OpenVPN UDP: $OVPN_UDP_PORT${NC}"
-    echo ""
-    echo -e "${BLUE}Existing services unaffected:${NC}"
-    echo "   SSH       : 22, 80, 2222"
-    echo "   Dropbear  : 109, 143"
-    echo "   Stunnel   : 443, 8443, 8444, 8445"
-    echo "   Xray      : 443, 80"
-    echo "   WebSocket : 8080, 8082"
-    echo "   Squid     : 3128, 8082, 8888"
-    echo -e "${CYAN}===========================================${NC}"
-    echo ""
-    print_success "Installation completed successfully!"
-    echo ""
     echo -e "${YELLOW}Quick Start:${NC}"
-    echo "   1. Create user: bash /root/ovpn/create-user.sh"
-    echo "   2. Open menu:   bash /root/ovpn/menu-ovpn.sh"
+    echo "   bash /root/ovpn/create-user.sh"
+    echo "   bash /root/ovpn/menu-ovpn.sh"
     echo ""
+    echo -e "${GREEN}OpenVPN3 CLI Usage:${NC}"
+    echo "   ovpncli client.ovpn"
+    echo "   ovpncli --username user --password pass client.ovpn"
+    echo -e "${CYAN}===========================================${NC}"
 }
 
 # ============================================================
-# MAIN INSTALLATION
+# MAIN
 # ============================================================
 main() {
     clear
     echo -e "${CYAN}===========================================${NC}"
     echo -e "${BLUE}   🔐 MARCSCRIPT OPENVPN INSTALLER${NC}"
+    echo -e "${BLUE}   Powered by OpenVPN3 Binary${NC}"
     echo -e "${CYAN}===========================================${NC}"
     echo ""
-    echo -e "${GREEN}Non-Conflicting Installation${NC}"
-    echo ""
-    echo "Ports to be used:"
-    echo "  • TCP: $OVPN_TCP_PORT"
-    echo "  • UDP: $OVPN_UDP_PORT"
-    echo ""
-    echo -e "${YELLOW}Existing ports (SSH, Xray, Dropbear, etc.) will NOT be affected${NC}"
+    echo -e "${GREEN}Features:${NC}"
+    echo "  • OpenVPN3 pre-compiled binary"
+    echo "  • No port conflicts (1194/2200)"
+    echo "  • User management + expiration"
+    echo "  • Auto-expiration check"
     echo ""
     echo -e "${CYAN}===========================================${NC}"
     read -p "Continue? (y/n): " -n 1 -r
@@ -562,8 +512,8 @@ main() {
         exit 0
     fi
     
-    # Run installation steps
     check_requirements
+    install_openvpn3_binary
     install_packages
     setup_easyrsa
     create_server_configs
@@ -574,5 +524,4 @@ main() {
     display_summary
 }
 
-# Run main
 main "$@"
