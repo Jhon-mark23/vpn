@@ -4,7 +4,8 @@
 # ============================================================
 # Prerequisites:
 #   - Domain in /root/domain
-#   - Certificate must already exist (run create-cert.sh first)
+#   - Certificate should exist, but a self-signed fallback is
+#     created automatically if missing.
 #   - Nginx installed (for reverse proxy)
 # ============================================================
 
@@ -26,7 +27,6 @@ yell='\e[1;33m'
 red='\e[1;31m'
 NC='\e[0m'
 
-# Detect OS
 detect_os() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
@@ -42,6 +42,7 @@ detect_os() {
         exit 1
     fi
 }
+
 check_success() {
     if [ $? -eq 0 ]; then
         echo -e "[ ${green}OK${NC} ] $1"
@@ -57,11 +58,27 @@ export NEEDRESTART_MODE=a
 
 mkdir -p /etc/xray
 
-# ---- Check for existing certificate ----
+# ---- Certificate Handling (non‑blocking) ----
 if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
-    echo -e "[ ${red}ERROR${NC} ] Xray certificate not found in /etc/xray/"
-    echo -e "[ ${yell}INFO${NC} ] Please run create-cert.sh first."
-    exit 1
+    echo -e "[ ${yell}WARNING${NC} ] Xray certificate not found in /etc/xray/"
+    if [ -f /usr/local/bin/create-cert.sh ]; then
+        echo -e "[ ${green}INFO${NC} ] Running create-cert.sh to obtain certificate..."
+        bash /usr/local/bin/create-cert.sh
+    else
+        echo -e "[ ${yell}WARNING${NC} ] create-cert.sh not found. Generating self-signed fallback..."
+        mkdir -p /etc/ssl/vpn
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /etc/ssl/vpn/privkey.pem \
+            -out /etc/ssl/vpn/fullchain.pem \
+            -subj "/C=PH/ST=Metro Manila/L=Manila/O=VPN/CN=$domain" 2>/dev/null
+        ln -sf /etc/ssl/vpn/fullchain.pem /etc/xray/xray.crt
+        ln -sf /etc/ssl/vpn/privkey.pem /etc/xray/xray.key
+        chmod 600 /etc/xray/xray.key
+    fi
+    # Double-check after attempt
+    if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
+        echo -e "[ ${red}ERROR${NC} ] Failed to provide a certificate. Xray will start but may not work correctly."
+    fi
 fi
 
 echo -e "[ ${green}INFO${NC} ] Installing required packages..."
@@ -112,7 +129,7 @@ check_success "Xray installation"
 # ---- Generate UUID ----
 uuid=$(cat /proc/sys/kernel/random/uuid)
 
-# ---- Xray config (same as original) ----
+# ---- Xray config ----
 cat > /etc/xray/config.json << END
 {
   "log" : {
@@ -406,7 +423,7 @@ Restart=on-abort
 WantedBy=multi-user.target
 EOF
 
-# ---- Nginx Config (same as original, certs already linked) ----
+# ---- Nginx Config ----
 echo -e "[ ${green}INFO${NC} ] Creating nginx configuration..."
 
 cat > /etc/nginx/conf.d/xray.conf <<'EOF'
