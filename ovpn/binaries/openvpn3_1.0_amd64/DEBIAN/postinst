@@ -1,4 +1,0 @@
-#!/bin/bash
-ln -sf /usr/local/bin/ovpncli /usr/bin/ovpncli 2>/dev/null || true
-ln -sf /usr/local/bin/ovpncli /usr/local/bin/openvpn3 2>/dev/null || true
-chmod 755 /usr/local/bin/ovpncli
