@@ -28,6 +28,9 @@ BCyan='\e[1;36m'
 BWhite='\e[1;37m'
 NC='\e[0m'
 
+PUBKEY=$(cat "/etc/slowdns/server.pub")
+nsdomain="ns.${domain}"
+
 purple() { echo -e "\\033[35;1m${*}\\033[0m"; }
 tyblue() { echo -e "\\033[36;1m${*}\\033[0m"; }
 yellow() { echo -e "\\033[33;1m${*}\\033[0m"; }
@@ -302,6 +305,11 @@ sed -i 's/\r$//' ins-xray.sh
 chmod +x ins-xray.sh
 bash ins-xray.sh
 
+wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/dnstt/install-dnstt.sh -O install-dnstt.sh
+sed -i 's/\r$//' install-dnstt.sh
+chmod +x install-dnstt.sh
+bash install-dnstt.sh
+
 # Finalize configuration
 clear
 cat > /root/.profile << END
@@ -332,38 +340,10 @@ echo -e "${BPurple}║${BGreen}              ✅ INSTALLATION COMPLETE!         
 echo -e "${BPurple}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BWhite}                   📡 SERVICE & PORTS${NC}"
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo -e "${BGreen}   SSH & VPN Services:${NC}"
-echo -e "   ├─ OpenSSH                  : ${BYellow}22, 80${NC}"
-echo -e "   ├─ SSH Websocket            : ${BYellow}80 (via Nginx → ws-dropbear:2095)${NC}"
-echo -e "   ├─ SSH SSL Websocket        : ${BYellow}443${NC}"
-echo -e "   ├─ Stunnel4                 : ${BYellow}222, 777${NC}"
-echo -e "   ├─ Dropbear                 : ${BYellow}109, 143${NC}"
-echo -e "   └─ Badvpn                   : ${BYellow}7100-7400${NC}"
-echo ""
-echo -e "${BGreen}   Xray Services:${NC}"
-echo -e "   ├─ Vmess WS TLS             : ${BYellow}443${NC}"
-echo -e "   ├─ Vless WS TLS             : ${BYellow}443${NC}"
-echo -e "   ├─ Trojan WS TLS            : ${BYellow}443${NC}"
-echo -e "   ├─ Shadowsocks WS TLS       : ${BYellow}443${NC}"
-echo -e "   ├─ Vmess WS none TLS        : ${BYellow}80${NC}"
-echo -e "   ├─ Vless WS none TLS        : ${BYellow}80${NC}"
-echo -e "   ├─ Trojan WS none TLS       : ${BYellow}80${NC}"
-echo -e "   ├─ Shadowsocks WS none TLS  : ${BYellow}80${NC}"
-echo -e "   ├─ Vmess gRPC               : ${BYellow}443${NC}"
-echo -e "   ├─ Vless gRPC               : ${BYellow}443${NC}"
-echo -e "   ├─ Trojan gRPC              : ${BYellow}443${NC}"
-echo -e "   └─ Shadowsocks gRPC         : ${BYellow}443${NC}"
-echo ""
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BWhite}                   🔧 MANAGEMENT COMMANDS${NC}"
 echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "   ${BGreen}menu${NC}         - Main menu"
-echo -e "   ${BGreen}create${NC}       - Create SSH user"
-echo -e "   ${BGreen}vpn-status${NC}   - Check service status"
 echo ""
 
 secs_to_human "$(($(date +%s) - ${start}))" | tee -a log-install.txt
