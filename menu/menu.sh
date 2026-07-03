@@ -22,6 +22,8 @@ NC='\033[0m'
 # VPS INFORMATION ENGINE
 # ============================================================
 domain=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "None")
+PUBKEY=$(cat "/etc/slowdns/server.pub")
+nsdomain="ns.${domain}"
 
 # SSL Certificate Status Engine
 if [ -f "$HOME/.acme.sh/${domain}_ecc/${domain}.key" ]; then
@@ -75,6 +77,8 @@ printf "  ${white}%-14s${NC} : %-42s\n" "OS Baseline" "$os_name"
 printf "  ${white}%-14s${NC} : %-42s\n" "System Uptime" "$uptime"
 printf "  ${white}%-14s${NC} : %-42s\n" "Public IP" "$MYIP"
 printf "  ${white}%-14s${NC} : %-42s\n" "Active Domain" "$domain"
+printf "  ${white}%-14s${NC} : %-42s\n" "NS: " "$nsdomain"
+printf "  ${white}%-14s${NC} : %-42s\n" "PUBKEY" "$PUBKEY"
 printf "  ${white}%-14s${NC} : %-42s\n" "Memory Capacity" "$uram MB / $tram MB"
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""

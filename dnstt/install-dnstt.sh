@@ -119,13 +119,13 @@ setup_iptables() {
 # ============================================================
 get_domain() {
     print_step "Configuring DNS Tunnel domain..."
-    
+    DOMAIN=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "None")
     # Read domain
-    read -rp "Enter main domain: " DOMAIN
+    #read -rp "Enter main domain: " DOMAIN
     
     # Read subdomain
-    read -rp "Enter subdomain prefix [ns]: " SUB
-    SUB=${SUB:-ns}
+   # read -rp "Enter subdomain prefix [ns]: " SUB
+    SUB="ns"
     
     # Build NS domain
     SUB_DOMAIN="${SUB}.${DOMAIN}"
@@ -392,31 +392,6 @@ SSH Port     : $SSH_PORT
 Alt SSH      : $DNSTT_ALT_SSH
 Public Key   : $PUBKEY
 
-====================================
-CLIENT COMMAND EXAMPLES:
-====================================
-
-# UDP Mode (recommended)
-$SLOWDNS_DIR/sldns-client -udp $SERVER_IP:5300 --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000
-
-# Using public DNS resolver
-$SLOWDNS_DIR/sldns-client -udp $PUBLIC_DNS --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000
-
-====================================
-CONNECT SSH THROUGH TUNNEL:
-====================================
-# Run DNSTT client locally
-$SLOWDNS_DIR/sldns-client -udp $PUBLIC_DNS --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000
-
-# Connect SSH through tunnel
-ssh -p $SSH_PORT -o ProxyCommand="nc -X 5 -x 127.0.0.1:7000 %h %p" root@$SERVER_IP
-
-====================================
-CLIENT BINARY DOWNLOAD:
-====================================
-$GITHUB_RAW/dnstt/dnstt-client-linux-\$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/armv7l/armv7/')
-
-====================================
 EOF
 
     print_success "Client config saved to $SLOWDNS_DIR/client-config.txt"
@@ -449,34 +424,6 @@ display_summary() {
     echo -e "  ${YELLOW}${PUBKEY}${NC}"
     echo ""
     
-    echo -e "${CYAN}📱 CLIENT QUICK COMMANDS:${NC}"
-    echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${WHITE}UDP Mode:${NC}"
-    echo -e "  ${YELLOW}$SLOWDNS_DIR/sldns-client -udp $SERVER_IP:5300 --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000${NC}"
-    echo ""
-    echo -e "  ${WHITE}Using Public DNS:${NC}"
-    echo -e "  ${YELLOW}$SLOWDNS_DIR/sldns-client -udp $PUBLIC_DNS --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000${NC}"
-    echo ""
-    
-    echo -e "${CYAN}⚙️  SERVICE CONTROL:${NC}"
-    echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${WHITE}Server Status:${NC} systemctl status server-sldns"
-    echo -e "  ${WHITE}Server Logs:${NC}  journalctl -u server-sldns -f"
-    echo -e "  ${WHITE}Restart:${NC}      systemctl restart server-sldns"
-    echo ""
-    
-    echo -e "${CYAN}📁 FILES:${NC}"
-    echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${WHITE}Binaries:${NC}    $SLOWDNS_DIR/"
-    echo -e "  ${WHITE}Keys:${NC}        $SLOWDNS_DIR/server.key | server.pub"
-    echo -e "  ${WHITE}Config:${NC}      $SLOWDNS_DIR/client-config.txt"
-    echo -e "  ${WHITE}NS Domain:${NC}   /root/nsdomain"
-    echo ""
-    
-    echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${PURPLE}║${CYAN}  🌐 Client binary download:                               ${PURPLE}║${NC}"
-    echo -e "${PURPLE}║${CYAN}  ${GITHUB_RAW}/dnstt/dnstt-client-linux-${SLOWDNS_ARCH}${NC}"
-    echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
 }
 
 # ============================================================
