@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================================
 # MARCSCRIPT DNSTT INSTALLER
-# DNS Tunnel (SlowDNS) with UDP Support
-# Compatible with Ubuntu & Debian
+# DNS Tunnel with UDP + DoH Support
+# No port conflicts with existing services
 # ============================================================
 
 GREEN='\033[0;32m'
@@ -27,13 +27,23 @@ GITHUB_RAW="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
 SLOWDNS_DIR="/etc/slowdns"
 SLOWDNS_LOG_DIR="/var/log/slowdns"
 
-# Ports (non-conflicting)
-DNSTT_UDP_PORT="5300"        # DNS tunnel server port
+# Ports (non-conflicting - Xray safe)
+DNSTT_UDP_PORT="5300"        # DNS tunnel UDP port (Xray safe)
+DNSTT_DOH_PORT="8443"        # DNS over HTTPS port (Xray uses 443)
 SSH_PORT="2222"              # Existing SSH port
 DNSTT_ALT_SSH="2269"         # Alternative SSH port
 
-# DNS Resolver
+# DNS Resolvers
 PUBLIC_DNS="8.8.8.8:53"
+DOH_RESOLVER="https://dns.google/dns-query"
+
+# ============================================================
+# CHECK ROOT
+# ============================================================
+if [ "$EUID" -ne 0 ]; then
+    print_error "Please run as root"
+    exit 1
+fi
 
 # ============================================================
 # DETECT OS
@@ -80,38 +90,38 @@ detect_arch() {
 }
 
 # ============================================================
-# CHECK ROOT
+# CHECK PORT AVAILABILITY
 # ============================================================
-if [ "$EUID" -ne 0 ]; then
-    print_error "Please run as root"
-    exit 1
-fi
-
-# ============================================================
-# SETUP IPTABLES
-# ============================================================
-setup_iptables() {
-    print_step "Setting up iptables rules..."
+check_ports() {
+    print_step "Checking port availability..."
     
-    # Install iptables if not present
-    apt install -y iptables iptables-persistent netfilter-persistent 2>/dev/null || true
-    
-    # Allow UDP port 5300
-    iptables -I INPUT -p udp --dport 5300 -j ACCEPT 2>/dev/null || true
-    
-    # Redirect DNS (port 53) to DNSTT port (5300)
-    iptables -t nat -I PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 2>/dev/null || true
-    
-    # Save rules
-    if command -v netfilter-persistent &>/dev/null; then
-        netfilter-persistent save 2>/dev/null || true
-        netfilter-persistent reload 2>/dev/null || true
-    elif command -v iptables-save &>/dev/null; then
-        mkdir -p /etc/iptables
-        iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+    # Check UDP port 5300
+    if ss -uln | grep -q ":5300 "; then
+        print_warn "Port 5300 is already in use!"
+        read -p "Use different UDP port? (y/n): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            read -rp "Enter new UDP port: " DNSTT_UDP_PORT
+        else
+            print_error "Port conflict detected. Cannot continue."
+            exit 1
+        fi
     fi
     
-    print_success "Iptables configured"
+    # Check port 8443 (DoH)
+    if ss -tuln | grep -q ":8443 "; then
+        print_warn "Port 8443 is already in use!"
+        read -p "Use different DoH port? (y/n): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            read -rp "Enter new DoH port: " DNSTT_DOH_PORT
+        else
+            print_warn "DoH will use port 443 (may conflict with Xray)"
+            DNSTT_DOH_PORT="443"
+        fi
+    fi
+    
+    print_success "Ports checked: UDP $DNSTT_UDP_PORT, DoH $DNSTT_DOH_PORT"
 }
 
 # ============================================================
@@ -119,13 +129,24 @@ setup_iptables() {
 # ============================================================
 get_domain() {
     print_step "Configuring DNS Tunnel domain..."
-    DOMAIN=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "None")
-    # Read domain
-    #read -rp "Enter main domain: " DOMAIN
+    
+    # Try to get domain from existing files
+    DOMAIN=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "")
+    
+    if [ -z "$DOMAIN" ]; then
+        read -rp "Enter main domain: " DOMAIN
+    else
+        print_info "Using existing domain: $DOMAIN"
+        read -p "Use different domain? (y/n): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            read -rp "Enter main domain: " DOMAIN
+        fi
+    fi
     
     # Read subdomain
-   # read -rp "Enter subdomain prefix [ns]: " SUB
-    SUB="ns"
+    read -rp "Enter subdomain prefix [ns]: " SUB
+    SUB=${SUB:-ns}
     
     # Build NS domain
     SUB_DOMAIN="${SUB}.${DOMAIN}"
@@ -133,31 +154,27 @@ get_domain() {
     
     echo "$NS_DOMAIN" > /root/nsdomain
     echo "$NS_DOMAIN" > /root/nsdomain.txt
+    echo "$DOMAIN" > /root/domain
     
     print_info "NS Domain: ${CYAN}${NS_DOMAIN}${NC}"
 }
 
 # ============================================================
-# INSTALL PACKAGES (Ubuntu/Debian Compatible)
+# INSTALL PACKAGES
 # ============================================================
 install_packages() {
     print_step "Installing required packages..."
     
-    # Update package list
     apt update -y
-    
-    # Install packages with correct names for Ubuntu/Debian
     apt install -y python3 python3-dnslib net-tools dnsutils \
                    git curl wget screen cron iptables dropbear \
                    sudo gnutls-bin dos2unix debconf-utils \
-                   ca-certificates openssl
+                   ca-certificates openssl ncat netcat-openbsd
     
-    # Try to install ncurses-utils (may not exist on some versions)
     apt install -y ncurses-utils 2>/dev/null || {
         print_warn "ncurses-utils not found, skipping (not critical)"
     }
     
-    # Restart cron
     systemctl restart cron 2>/dev/null || {
         print_warn "Failed to restart cron, continuing..."
     }
@@ -182,11 +199,9 @@ configure_ssh() {
         print_info "Added SSH port $DNSTT_ALT_SSH"
     fi
     
-    # Enable TCP forwarding
     sed -i 's/#AllowTcpForwarding yes/AllowTcpForwarding yes/g' /etc/ssh/sshd_config
     sed -i 's/AllowTcpForwarding no/AllowTcpForwarding yes/g' /etc/ssh/sshd_config
     
-    # Restart SSH
     systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     sleep 2
     
@@ -198,19 +213,45 @@ configure_ssh() {
 }
 
 # ============================================================
+# SETUP IPTABLES (No port 53 redirect to avoid conflicts)
+# ============================================================
+setup_iptables() {
+    print_step "Setting up iptables rules (no port 53 redirect)..."
+    
+    # Install iptables if not present
+    apt install -y iptables iptables-persistent netfilter-persistent 2>/dev/null || true
+    
+    # Allow UDP port 5300 (DNSTT)
+    iptables -I INPUT -p udp --dport $DNSTT_UDP_PORT -j ACCEPT 2>/dev/null || true
+    
+    # Allow DoH port
+    iptables -I INPUT -p tcp --dport $DNSTT_DOH_PORT -j ACCEPT 2>/dev/null || true
+    
+    # DO NOT redirect port 53 - this avoids Nginx conflict
+    # iptables -t nat -I PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 2>/dev/null || true
+    
+    # Save rules
+    if command -v netfilter-persistent &>/dev/null; then
+        netfilter-persistent save 2>/dev/null || true
+        netfilter-persistent reload 2>/dev/null || true
+    elif command -v iptables-save &>/dev/null; then
+        mkdir -p /etc/iptables
+        iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+    fi
+    
+    print_success "Iptables configured (no port 53 redirect)"
+}
+
+# ============================================================
 # INSTALL DNSTT BINARIES
 # ============================================================
 install_binaries() {
     print_step "Installing DNSTT binaries..."
     
-    # Remove old directory
     rm -rf "$SLOWDNS_DIR"
-    
-    # Create directories
     mkdir -m 755 "$SLOWDNS_DIR"
     mkdir -p "$SLOWDNS_LOG_DIR"
     
-    # Download binaries and keys from repo
     print_info "Downloading DNSTT server binary..."
     wget -q -O "$SLOWDNS_DIR/sldns-server" "$GITHUB_RAW/dnstt/dnstt-server-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
         print_error "Failed to download server binary!"
@@ -223,11 +264,9 @@ install_binaries() {
         print_warn "Failed to download client binary (may be normal on server)"
     }
     
-    # Make executable
     chmod +x "$SLOWDNS_DIR/sldns-server"
     chmod +x "$SLOWDNS_DIR/sldns-client" 2>/dev/null || true
     
-    # Verify server binary
     if "$SLOWDNS_DIR/sldns-server" 2>&1 | grep -q "Usage\|privkey-file"; then
         print_success "DNSTT server binary verified"
     else
@@ -244,7 +283,6 @@ generate_keys() {
     
     cd "$SLOWDNS_DIR"
     
-    # Check if keys already exist
     if [ -f "$SLOWDNS_DIR/server.key" ] && [ -f "$SLOWDNS_DIR/server.pub" ]; then
         print_info "Keys already exist"
         read -p "Regenerate? (y/n): " -n 1 -r
@@ -256,14 +294,12 @@ generate_keys() {
         fi
     fi
     
-    # Generate keys
     ./sldns-server -gen-key -privkey-file "$SLOWDNS_DIR/server.key" -pubkey-file "$SLOWDNS_DIR/server.pub" 2>/dev/null
     
     if [ -f "$SLOWDNS_DIR/server.key" ] && [ -f "$SLOWDNS_DIR/server.pub" ]; then
         chmod 600 "$SLOWDNS_DIR/server.key" 2>/dev/null || true
         chmod 644 "$SLOWDNS_DIR/server.pub" 2>/dev/null || true
         
-        # Display public key
         PUBKEY=$(cat "$SLOWDNS_DIR/server.pub")
         print_success "Keypair generated"
         print_info "Public Key: ${YELLOW}${PUBKEY}${NC}"
@@ -274,16 +310,15 @@ generate_keys() {
 }
 
 # ============================================================
-# CREATE SYSTEMD SERVICES
+# CREATE SYSTEMD SERVICES (UDP + DoH)
 # ============================================================
 create_services() {
     print_step "Creating systemd services..."
     
-    # Server Service
-    cat > /etc/systemd/system/server-sldns.service <<EOF
+    # Server Service - UDP Mode (port 5300)
+    cat > /etc/systemd/system/server-sldns-udp.service <<EOF
 [Unit]
-Description=MarcScript DNSTT Server (SlowDNS)
-Documentation=https://github.com/Jhon-mark23/vpn
+Description=MarcScript DNSTT Server (UDP Mode)
 After=network.target nss-lookup.target
 
 [Service]
@@ -292,7 +327,7 @@ User=root
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
-ExecStart=$SLOWDNS_DIR/sldns-server -udp :5300 -privkey-file $SLOWDNS_DIR/server.key $NS_DOMAIN 127.0.0.1:$DNSTT_ALT_SSH
+ExecStart=$SLOWDNS_DIR/sldns-server -udp :$DNSTT_UDP_PORT -privkey-file $SLOWDNS_DIR/server.key $NS_DOMAIN 127.0.0.1:$DNSTT_ALT_SSH
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
@@ -301,11 +336,31 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 EOF
 
-    # Client Service (optional, for local testing)
+    # Server Service - DoH Mode (port 8443)
+    cat > /etc/systemd/system/server-sldns-doh.service <<EOF
+[Unit]
+Description=MarcScript DNSTT Server (DoH Mode)
+After=network.target nss-lookup.target
+
+[Service]
+Type=simple
+User=root
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ExecStart=$SLOWDNS_DIR/sldns-server -doh :$DNSTT_DOH_PORT -privkey-file $SLOWDNS_DIR/server.key $NS_DOMAIN 127.0.0.1:$DNSTT_ALT_SSH
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Client Service (UDP - optional)
     cat > /etc/systemd/system/client-sldns.service <<EOF
 [Unit]
-Description=MarcScript DNSTT Client (SlowDNS)
-Documentation=https://github.com/Jhon-mark23/vpn
+Description=MarcScript DNSTT Client (UDP Mode)
 After=network.target nss-lookup.target
 
 [Service]
@@ -323,8 +378,8 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 EOF
 
-    # Set permissions
-    chmod 644 /etc/systemd/system/server-sldns.service
+    chmod 644 /etc/systemd/system/server-sldns-udp.service
+    chmod 644 /etc/systemd/system/server-sldns-doh.service
     chmod 644 /etc/systemd/system/client-sldns.service
     
     print_success "Systemd services created"
@@ -336,32 +391,42 @@ EOF
 start_services() {
     print_step "Starting DNSTT services..."
     
-    # Kill existing processes
     pkill sldns-server 2>/dev/null || true
     pkill sldns-client 2>/dev/null || true
     
     systemctl daemon-reload
     
-    # Stop existing if running
-    systemctl stop server-sldns client-sldns 2>/dev/null || true
+    # Stop existing
+    systemctl stop server-sldns-udp server-sldns-doh client-sldns 2>/dev/null || true
     
-    # Enable and start server
-    systemctl enable server-sldns 2>/dev/null
-    systemctl start server-sldns 2>/dev/null
+    # Start UDP server
+    systemctl enable server-sldns-udp 2>/dev/null
+    systemctl start server-sldns-udp 2>/dev/null
     
-    # Enable and start client (optional)
+    # Start DoH server
+    systemctl enable server-sldns-doh 2>/dev/null
+    systemctl start server-sldns-doh 2>/dev/null
+    
+    # Start client (optional)
     systemctl enable client-sldns 2>/dev/null
     systemctl start client-sldns 2>/dev/null
     
     sleep 3
     
-    # Verify
-    if systemctl is-active --quiet server-sldns; then
-        print_success "DNSTT Server running on UDP port 5300"
-        print_info "NS Domain: $NS_DOMAIN"
+    # Verify UDP
+    if systemctl is-active --quiet server-sldns-udp; then
+        print_success "DNSTT Server (UDP) running on port $DNSTT_UDP_PORT"
     else
-        print_error "DNSTT Server failed!"
-        journalctl -u server-sldns --no-pager -n 10 2>/dev/null || true
+        print_error "DNSTT Server (UDP) failed!"
+        journalctl -u server-sldns-udp --no-pager -n 10 2>/dev/null || true
+    fi
+    
+    # Verify DoH
+    if systemctl is-active --quiet server-sldns-doh; then
+        print_success "DNSTT Server (DoH) running on port $DNSTT_DOH_PORT"
+    else
+        print_error "DNSTT Server (DoH) failed!"
+        journalctl -u server-sldns-doh --no-pager -n 10 2>/dev/null || true
     fi
     
     if systemctl is-active --quiet client-sldns; then
@@ -380,18 +445,54 @@ create_client_config() {
     SERVER_IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
     PUBKEY=$(cat "$SLOWDNS_DIR/server.pub")
     
-    # Client config file
     cat > "$SLOWDNS_DIR/client-config.txt" <<EOF
 ====================================
-MarcScript DNSTT Client Config
+MARCSCRIPT DNSTT CLIENT CONFIG
 ====================================
 Server IP    : $SERVER_IP
 NS Domain    : $NS_DOMAIN
-DNS Port     : 5300 (UDP)
-SSH Port     : $SSH_PORT
-Alt SSH      : $DNSTT_ALT_SSH
 Public Key   : $PUBKEY
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📱 MODE 1: UDP (Port 5300) - WiFi Only
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+$SLOWDNS_DIR/sldns-client -udp $SERVER_IP:$DNSTT_UDP_PORT --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📱 MODE 2: DoH (Port $DNSTT_DOH_PORT) - WiFi + Mobile Data
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+$SLOWDNS_DIR/sldns-client -doh https://$SERVER_IP:$DNSTT_DOH_PORT --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📱 MODE 3: DoH via Google DNS (Mobile Data)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+$SLOWDNS_DIR/sldns-client -doh https://dns.google/dns-query --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📱 HTTP Custom / KPN Tunnel Settings
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SSH Host    : $SERVER_IP
+SSH Port    : $SSH_PORT
+Username    : (your username)
+Password    : (your password)
+SlowDNS     : ON
+DNS         : 8.8.8.8
+NS Domain   : $NS_DOMAIN
+Pubkey      : $PUBKEY
+
+For mobile data, use DoH mode with Google DNS.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 SERVICE MANAGEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UDP Server  : systemctl status server-sldns-udp
+DoH Server  : systemctl status server-sldns-doh
+Logs        : journalctl -u server-sldns-udp -f
+            : journalctl -u server-sldns-doh -f
+Restart UDP : systemctl restart server-sldns-udp
+Restart DoH : systemctl restart server-sldns-doh
+
+====================================
 EOF
 
     print_success "Client config saved to $SLOWDNS_DIR/client-config.txt"
@@ -414,7 +515,8 @@ display_summary() {
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "Server IP" "$SERVER_IP"
     printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "NS Domain" "$NS_DOMAIN"
-    printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "DNS Port" "5300 (UDP)"
+    printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "UDP Port" "$DNSTT_UDP_PORT"
+    printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "DoH Port" "$DNSTT_DOH_PORT"
     printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "SSH Port" "$SSH_PORT"
     printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "Alt SSH" "$DNSTT_ALT_SSH"
     echo ""
@@ -424,6 +526,31 @@ display_summary() {
     echo -e "  ${YELLOW}${PUBKEY}${NC}"
     echo ""
     
+    echo -e "${CYAN}📱 CLIENT COMMANDS:${NC}"
+    echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  ${WHITE}UDP (WiFi):${NC}"
+    echo -e "  ${YELLOW}$SLOWDNS_DIR/sldns-client -udp $SERVER_IP:$DNSTT_UDP_PORT --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000${NC}"
+    echo ""
+    echo -e "  ${WHITE}DoH (Mobile Data):${NC}"
+    echo -e "  ${YELLOW}$SLOWDNS_DIR/sldns-client -doh https://$SERVER_IP:$DNSTT_DOH_PORT --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000${NC}"
+    echo ""
+    
+    echo -e "${CYAN}⚙️  SERVICE CONTROL:${NC}"
+    echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  ${WHITE}UDP Server:${NC} systemctl status server-sldns-udp"
+    echo -e "  ${WHITE}DoH Server:${NC} systemctl status server-sldns-doh"
+    echo -e "  ${WHITE}Restart UDP:${NC} systemctl restart server-sldns-udp"
+    echo -e "  ${WHITE}Restart DoH:${NC} systemctl restart server-sldns-doh"
+    echo ""
+    
+    echo -e "${CYAN}📁 FILES:${NC}"
+    echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  ${WHITE}Binaries:${NC}    $SLOWDNS_DIR/"
+    echo -e "  ${WHITE}Keys:${NC}        $SLOWDNS_DIR/server.key | server.pub"
+    echo -e "  ${WHITE}Config:${NC}      $SLOWDNS_DIR/client-config.txt"
+    echo -e "  ${WHITE}NS Domain:${NC}   /root/nsdomain"
+    echo ""
 }
 
 # ============================================================
@@ -433,17 +560,18 @@ main() {
     clear
     echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${PURPLE}║${WHITE}         🔒 MARCSCRIPT DNSTT INSTALLER                      ${PURPLE}║${NC}"
-    echo -e "${PURPLE}║${WHITE}         DNS Tunnel with DoH/DoT/UDP Support                ${PURPLE}║${NC}"
+    echo -e "${PURPLE}║${WHITE}         UDP + DoH Support - No Port Conflicts             ${PURPLE}║${NC}"
     echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${CYAN}Features:${NC}"
-    echo -e "  • DNS Tunnel (DoH/DoT/UDP)"
-    echo -e "  • No conflict with existing services"
-    echo -e "  • Multi-architecture support"
-    echo -e "  • Port 5300 (non-conflicting)"
+    echo -e "  • UDP Mode (Port 5300) - Works on WiFi"
+    echo -e "  • DoH Mode (Port 8443) - Works on Mobile Data"
+    echo -e "  • No port 53 redirect (no Nginx conflict)"
+    echo -e "  • Xray compatible (uses 8443 instead of 443)"
     echo ""
     echo -e "${CYAN}Ports:${NC}"
-    echo -e "  DNS Tunnel: 5300 (UDP)"
+    echo -e "  UDP Tunnel: $DNSTT_UDP_PORT"
+    echo -e "  DoH Tunnel: $DNSTT_DOH_PORT"
     echo -e "  SSH: $SSH_PORT, $DNSTT_ALT_SSH"
     echo ""
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -455,10 +583,11 @@ main() {
     
     detect_os
     detect_arch
-    setup_iptables
+    check_ports
     get_domain
     install_packages
     configure_ssh
+    setup_iptables
     install_binaries
     generate_keys
     create_services
