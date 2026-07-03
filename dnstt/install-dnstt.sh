@@ -2,7 +2,7 @@
 # ============================================================
 # MARCSCRIPT DNSTT INSTALLER
 # DNS Tunnel (SlowDNS) with UDP Support
-# Compatible with existing SSH/Xray setup
+# Compatible with Ubuntu & Debian
 # ============================================================
 
 GREEN='\033[0;32m'
@@ -29,17 +29,34 @@ SLOWDNS_LOG_DIR="/var/log/slowdns"
 
 # Ports (non-conflicting)
 DNSTT_UDP_PORT="5300"        # DNS tunnel server port
-SSH_PORT="2222"              # Existing SSH port (from ssh-vpn.sh)
+SSH_PORT="2222"              # Existing SSH port
 DNSTT_ALT_SSH="2269"         # Alternative SSH port
 
 # DNS Resolver
 PUBLIC_DNS="8.8.8.8:53"
 
-# Check root
-if [ "$EUID" -ne 0 ]; then
-    print_error "Please run as root"
-    exit 1
-fi
+# ============================================================
+# DETECT OS
+# ============================================================
+detect_os() {
+    print_step "Detecting operating system..."
+    
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+        VER=$VERSION_ID
+    else
+        print_error "Cannot detect OS"
+        exit 1
+    fi
+    
+    print_info "Detected OS: $OS $VER"
+    
+    if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
+        print_error "This script only supports Ubuntu or Debian"
+        exit 1
+    fi
+}
 
 # ============================================================
 # DETECT ARCHITECTURE
@@ -63,10 +80,21 @@ detect_arch() {
 }
 
 # ============================================================
+# CHECK ROOT
+# ============================================================
+if [ "$EUID" -ne 0 ]; then
+    print_error "Please run as root"
+    exit 1
+fi
+
+# ============================================================
 # SETUP IPTABLES
 # ============================================================
 setup_iptables() {
     print_step "Setting up iptables rules..."
+    
+    # Install iptables if not present
+    apt install -y iptables iptables-persistent netfilter-persistent 2>/dev/null || true
     
     # Allow UDP port 5300
     iptables -I INPUT -p udp --dport 5300 -j ACCEPT 2>/dev/null || true
@@ -75,8 +103,13 @@ setup_iptables() {
     iptables -t nat -I PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 2>/dev/null || true
     
     # Save rules
-    netfilter-persistent save 2>/dev/null || true
-    netfilter-persistent reload 2>/dev/null || true
+    if command -v netfilter-persistent &>/dev/null; then
+        netfilter-persistent save 2>/dev/null || true
+        netfilter-persistent reload 2>/dev/null || true
+    elif command -v iptables-save &>/dev/null; then
+        mkdir -p /etc/iptables
+        iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+    fi
     
     print_success "Iptables configured"
 }
@@ -91,12 +124,12 @@ get_domain() {
     read -rp "Enter main domain: " DOMAIN
     
     # Read subdomain
-    read -rp "Enter subdomain prefix [dnstt]: " SUB
-    SUB=${SUB:-dnstt}
+    read -rp "Enter subdomain prefix [ns]: " SUB
+    SUB=${SUB:-ns}
     
     # Build NS domain
     SUB_DOMAIN="${SUB}.${DOMAIN}"
-    NS_DOMAIN="slowdns-${SUB_DOMAIN}"
+    NS_DOMAIN="${SUB_DOMAIN}"
     
     echo "$NS_DOMAIN" > /root/nsdomain
     echo "$NS_DOMAIN" > /root/nsdomain.txt
@@ -105,19 +138,29 @@ get_domain() {
 }
 
 # ============================================================
-# INSTALL PACKAGES
+# INSTALL PACKAGES (Ubuntu/Debian Compatible)
 # ============================================================
 install_packages() {
     print_step "Installing required packages..."
     
+    # Update package list
     apt update -y
-    apt install -y python3 python3-dnslib net-tools ncurses-utils dnsutils \
-                   git curl wget screen cron iptables dropbear \
-                   sudo gnutls-bin dos2unix debconf-utils
     
-    # Reload cron
-    systemctl reload cron
-    systemctl restart cron
+    # Install packages with correct names for Ubuntu/Debian
+    apt install -y python3 python3-dnslib net-tools dnsutils \
+                   git curl wget screen cron iptables dropbear \
+                   sudo gnutls-bin dos2unix debconf-utils \
+                   ca-certificates openssl
+    
+    # Try to install ncurses-utils (may not exist on some versions)
+    apt install -y ncurses-utils 2>/dev/null || {
+        print_warn "ncurses-utils not found, skipping (not critical)"
+    }
+    
+    # Restart cron
+    systemctl restart cron 2>/dev/null || {
+        print_warn "Failed to restart cron, continuing..."
+    }
     
     print_success "Packages installed"
 }
@@ -147,10 +190,10 @@ configure_ssh() {
     systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     sleep 2
     
-    if systemctl is-active --quiet ssh; then
+    if systemctl is-active --quiet ssh 2>/dev/null || systemctl is-active --quiet sshd 2>/dev/null; then
         print_success "SSH configured and running"
     else
-        print_error "SSH failed to restart!"
+        print_warn "SSH may not be running, check manually"
     fi
 }
 
@@ -164,7 +207,7 @@ install_binaries() {
     rm -rf "$SLOWDNS_DIR"
     
     # Create directories
-    mkdir -m 777 "$SLOWDNS_DIR"
+    mkdir -m 755 "$SLOWDNS_DIR"
     mkdir -p "$SLOWDNS_LOG_DIR"
     
     # Download binaries and keys from repo
@@ -207,8 +250,8 @@ generate_keys() {
         read -p "Regenerate? (y/n): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            chmod +x "$SLOWDNS_DIR/server.key" 2>/dev/null || true
-            chmod +x "$SLOWDNS_DIR/server.pub" 2>/dev/null || true
+            chmod 600 "$SLOWDNS_DIR/server.key" 2>/dev/null || true
+            chmod 644 "$SLOWDNS_DIR/server.pub" 2>/dev/null || true
             return 0
         fi
     fi
@@ -217,8 +260,8 @@ generate_keys() {
     ./sldns-server -gen-key -privkey-file "$SLOWDNS_DIR/server.key" -pubkey-file "$SLOWDNS_DIR/server.pub" 2>/dev/null
     
     if [ -f "$SLOWDNS_DIR/server.key" ] && [ -f "$SLOWDNS_DIR/server.pub" ]; then
-        chmod +x "$SLOWDNS_DIR/server.key" 2>/dev/null || true
-        chmod +x "$SLOWDNS_DIR/server.pub" 2>/dev/null || true
+        chmod 600 "$SLOWDNS_DIR/server.key" 2>/dev/null || true
+        chmod 644 "$SLOWDNS_DIR/server.pub" 2>/dev/null || true
         
         # Display public key
         PUBKEY=$(cat "$SLOWDNS_DIR/server.pub")
@@ -252,6 +295,7 @@ NoNewPrivileges=true
 ExecStart=$SLOWDNS_DIR/sldns-server -udp :5300 -privkey-file $SLOWDNS_DIR/server.key $NS_DOMAIN 127.0.0.1:$DNSTT_ALT_SSH
 Restart=on-failure
 RestartSec=5
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
@@ -273,14 +317,15 @@ NoNewPrivileges=true
 ExecStart=$SLOWDNS_DIR/sldns-client -udp $PUBLIC_DNS --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:$SSH_PORT
 Restart=on-failure
 RestartSec=5
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
     # Set permissions
-    chmod +x /etc/systemd/system/server-sldns.service
-    chmod +x /etc/systemd/system/client-sldns.service
+    chmod 644 /etc/systemd/system/server-sldns.service
+    chmod 644 /etc/systemd/system/client-sldns.service
     
     print_success "Systemd services created"
 }
@@ -316,7 +361,7 @@ start_services() {
         print_info "NS Domain: $NS_DOMAIN"
     else
         print_error "DNSTT Server failed!"
-        journalctl -u server-sldns --no-pager -n 10
+        journalctl -u server-sldns --no-pager -n 10 2>/dev/null || true
     fi
     
     if systemctl is-active --quiet client-sldns; then
@@ -357,12 +402,6 @@ $SLOWDNS_DIR/sldns-client -udp $SERVER_IP:5300 --pubkey-file $SLOWDNS_DIR/server
 # Using public DNS resolver
 $SLOWDNS_DIR/sldns-client -udp $PUBLIC_DNS --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000
 
-# DoH Mode (DNS over HTTPS)
-$SLOWDNS_DIR/sldns-client -doh https://dns.google/dns-query --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000
-
-# DoT Mode (DNS over TLS)
-$SLOWDNS_DIR/sldns-client -dot dns.google:853 --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000
-
 ====================================
 CONNECT SSH THROUGH TUNNEL:
 ====================================
@@ -371,9 +410,6 @@ $SLOWDNS_DIR/sldns-client -udp $PUBLIC_DNS --pubkey-file $SLOWDNS_DIR/server.pub
 
 # Connect SSH through tunnel
 ssh -p $SSH_PORT -o ProxyCommand="nc -X 5 -x 127.0.0.1:7000 %h %p" root@$SERVER_IP
-
-# Or using direct SSH
-ssh -p $SSH_PORT root@127.0.0.1
 
 ====================================
 CLIENT BINARY DOWNLOAD:
@@ -418,8 +454,8 @@ display_summary() {
     echo -e "  ${WHITE}UDP Mode:${NC}"
     echo -e "  ${YELLOW}$SLOWDNS_DIR/sldns-client -udp $SERVER_IP:5300 --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000${NC}"
     echo ""
-    echo -e "  ${WHITE}DoH Mode:${NC}"
-    echo -e "  ${YELLOW}$SLOWDNS_DIR/sldns-client -doh https://dns.google/dns-query --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000${NC}"
+    echo -e "  ${WHITE}Using Public DNS:${NC}"
+    echo -e "  ${YELLOW}$SLOWDNS_DIR/sldns-client -udp $PUBLIC_DNS --pubkey-file $SLOWDNS_DIR/server.pub $NS_DOMAIN 127.0.0.1:7000${NC}"
     echo ""
     
     echo -e "${CYAN}⚙️  SERVICE CONTROL:${NC}"
@@ -439,7 +475,7 @@ display_summary() {
     
     echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${PURPLE}║${CYAN}  🌐 Client binary download:                               ${PURPLE}║${NC}"
-    echo -e "${PURPLE}║${CYAN}  ${GITHUB_RAW}/dnstt/dnstt-client-linux-\$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')${NC}"
+    echo -e "${PURPLE}║${CYAN}  ${GITHUB_RAW}/dnstt/dnstt-client-linux-${SLOWDNS_ARCH}${NC}"
     echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
 }
 
@@ -470,6 +506,7 @@ main() {
         exit 0
     fi
     
+    detect_os
     detect_arch
     setup_iptables
     get_domain
