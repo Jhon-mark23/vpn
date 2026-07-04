@@ -16,10 +16,9 @@ white='\033[1;37m'
 NC='\033[0m'
 
 # ---------- CONFIGURATION ----------
-REPO_URL="https://raw.githubusercontent.com/yourusername/marcscript/main"  # CHANGE THIS
+GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
 BACKUP_DIR="/root/backup_$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="/var/log/marcscript-update.log"
-INSTALL_DIR="/usr/local/marcscript"
 
 # ---------- FUNCTIONS ----------
 
@@ -28,23 +27,34 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# Error handler
-error_exit() {
-    echo -e "${red}✗ ERROR: $1${NC}"
-    log "ERROR: $1"
-    exit 1
-}
-
 # Success message
 success_msg() {
     echo -e "${green}✓ $1${NC}"
     log "SUCCESS: $1"
 }
 
-# Warning message
-warning_msg() {
-    echo -e "${yellow}⚠ $1${NC}"
-    log "WARNING: $1"
+# Error message
+error_msg() {
+    echo -e "${red}✗ $1${NC}"
+    log "ERROR: $1"
+}
+
+# Download function (based on your working pattern)
+dl() {
+    local dest="/usr/bin/$1"
+    local url="$GHBASE/$2"
+    echo -e "${cyan}Downloading: $1${NC}"
+    
+    wget -q --show-progress -O "$dest" "$url" 2>&1
+    if [ $? -eq 0 ]; then
+        chmod +x "$dest"
+        sed -i 's/\r$//' "$dest" 2>/dev/null
+        success_msg "Installed: $1"
+        return 0
+    else
+        error_msg "Failed to download: $1"
+        return 1
+    fi
 }
 
 # Create backup
@@ -52,62 +62,18 @@ create_backup() {
     echo -e "${yellow}Creating backup...${NC}"
     mkdir -p "$BACKUP_DIR"
     
-    # Backup important directories
-    [ -d "/etc/xray" ] && cp -r /etc/xray "$BACKUP_DIR/" 2>/dev/null
-    [ -d "/etc/v2ray" ] && cp -r /etc/v2ray "$BACKUP_DIR/" 2>/dev/null
-    [ -d "/etc/ssh" ] && cp -r /etc/ssh "$BACKUP_DIR/" 2>/dev/null
-    [ -d "/etc/dropbear" ] && cp -r /etc/dropbear "$BACKUP_DIR/" 2>/dev/null
-    [ -d "/etc/nginx" ] && cp -r /etc/nginx "$BACKUP_DIR/" 2>/dev/null
+    # Backup important files
     [ -f "/etc/passwd" ] && cp /etc/passwd "$BACKUP_DIR/" 2>/dev/null
     [ -f "/etc/shadow" ] && cp /etc/shadow "$BACKUP_DIR/" 2>/dev/null
     [ -f "/root/domain.txt" ] && cp /root/domain.txt "$BACKUP_DIR/" 2>/dev/null
-    
-    # Backup all scripts
-    [ -d "/usr/local/bin/ssh" ] && cp -r /usr/local/bin/ssh "$BACKUP_DIR/" 2>/dev/null
-    [ -d "/usr/local/bin/xray" ] && cp -r /usr/local/bin/xray "$BACKUP_DIR/" 2>/dev/null
-    [ -d "/usr/local/bin/menu" ] && cp -r /usr/local/bin/menu "$BACKUP_DIR/" 2>/dev/null
-    [ -d "/usr/local/bin/dnstt" ] && cp -r /usr/local/bin/dnstt "$BACKUP_DIR/" 2>/dev/null
-    [ -d "/usr/local/bin/sshws" ] && cp -r /usr/local/bin/sshws "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/usr/bin" ] && cp -r /usr/bin/menu "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/usr/bin" ] && cp -r /usr/bin/ssh "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/usr/bin" ] && cp -r /usr/bin/xray "$BACKUP_DIR/" 2>/dev/null
     
     success_msg "Backup created at: $BACKUP_DIR"
 }
 
-# Download file with progress
-download_file() {
-    local url="$1"
-    local dest="$2"
-    local filename=$(basename "$dest")
-    
-    echo -e "${cyan}Downloading: $filename${NC}"
-    wget -q --show-progress -O "$dest" "$url" || {
-        echo -e "${red}✗ Failed to download: $filename${NC}"
-        return 1
-    }
-    chmod +x "$dest" 2>/dev/null
-    success_msg "Installed: $filename"
-    return 0
-}
-
-# Delete old files before installation
-delete_old_files() {
-    local target_dir="$1"
-    local pattern="$2"
-    
-    if [ -d "$target_dir" ]; then
-        echo -e "${yellow}Removing old files from: $target_dir${NC}"
-        if [ -n "$pattern" ]; then
-            # Delete specific pattern
-            find "$target_dir" -name "$pattern" -type f -delete 2>/dev/null
-        else
-            # Delete all files in directory
-            rm -rf "$target_dir"/* 2>/dev/null
-        fi
-        success_msg "Old files removed from: $target_dir"
-    else
-        mkdir -p "$target_dir"
-        success_msg "Created directory: $target_dir"
-    fi
-}
+# ---------- UPDATE FUNCTIONS ----------
 
 # Update ALL services
 update_all() {
@@ -116,7 +82,6 @@ update_all() {
     echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    # Confirm update
     read -p "This will update ALL services. Continue? (y/N): " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo -e "${yellow}Update cancelled.${NC}"
@@ -124,14 +89,11 @@ update_all() {
     fi
     
     create_backup
-    
-    # Update each component
+    update_menu
     update_ssh
     update_xray
-    update_menu
     update_dnstt
     update_sshws
-    update_main_scripts
     
     # Restart services
     echo -e "${cyan}Restarting services...${NC}"
@@ -140,28 +102,80 @@ update_all() {
     systemctl restart dropbear 2>/dev/null
     systemctl restart ws-dropbear 2>/dev/null
     systemctl restart ws-stunnel 2>/dev/null
-    systemctl restart nginx 2>/dev/null
     
     success_msg "All services updated successfully!"
     echo ""
 }
 
-# Update main scripts
-update_main_scripts() {
-    echo -e "${cyan}Updating main scripts...${NC}"
-    mkdir -p /usr/local/bin
+# Update Menu only
+update_menu() {
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${cyan}              🔄 UPDATING MENU FILES                         ${NC}"
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo ""
     
-    # Delete old main scripts
-    local main_scripts=("setup.sh" "setup-ssh.sh" "create-cert.sh" "push.sh")
-    for script in "${main_scripts[@]}"; do
-        [ -f "/usr/local/bin/$script" ] && rm -f "/usr/local/bin/$script"
-    done
+    read -p "This will update Menu files. Continue? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${yellow}Update cancelled.${NC}"
+        return
+    fi
     
-    # Download new main scripts
-    download_file "$REPO_URL/setup.sh" "/usr/local/bin/setup.sh"
-    download_file "$REPO_URL/setup-ssh.sh" "/usr/local/bin/setup-ssh.sh"
-    download_file "$REPO_URL/create-cert.sh" "/usr/local/bin/create-cert.sh"
-    download_file "$REPO_URL/push.sh" "/usr/local/bin/push.sh"
+    create_backup
+    
+    # Remove old menu files
+    echo -e "${yellow}Removing old menu files...${NC}"
+    rm -rf /usr/bin/menu 2>/dev/null
+    mkdir -p /usr/bin/menu
+    success_msg "Old menu files removed"
+    
+    # Download menu scripts using dl function
+    echo -e "${cyan}Downloading menu scripts...${NC}"
+    cd /usr/bin || return
+    
+    dl menu menu/menu.sh
+    dl m-sshovpn menu/m-sshovpn.sh
+    dl m-vmess menu/m-vmess.sh
+    dl m-vless menu/m-vless.sh
+    dl m-trojan menu/m-trojan.sh
+    dl m-ssws menu/m-ssws.sh
+    dl m-system menu/m-system.sh
+    dl m-xray menu/m-xray.sh
+    dl m-domain menu/m-domain.sh
+    dl m-dns menu/m-dns.sh
+    dl m-webmin menu/m-webmin.sh
+    dl running menu/running.sh
+    dl clearcache menu/clearcache.sh
+    dl restart menu/restart.sh
+    dl bw menu/bw.sh
+    dl auto-reboot menu/auto-reboot.sh
+    dl tcp menu/tcp.sh
+    dl update menu/update.sh
+    dl versi menu/versi
+    
+    # Fix permissions
+    chmod +x /usr/bin/menu/*.sh 2>/dev/null
+    chmod +x /usr/bin/menu/update 2>/dev/null
+    
+    # ✅ FIXED: Remove old symlink properly
+    if [ -L "/usr/bin/menu" ]; then
+        rm -f /usr/bin/menu
+    fi
+    
+    # Create proper symlink - ONLY for menu.sh
+    if [ -f "/usr/bin/menu/menu.sh" ]; then
+        # Remove old menu command if it exists as a file or symlink
+        [ -f "/usr/bin/menu" ] && rm -f /usr/bin/menu
+        [ -L "/usr/bin/menu" ] && rm -f /usr/bin/menu
+        
+        # Create symlink from /usr/bin/menu to the script
+        ln -sf /usr/bin/menu/menu.sh /usr/bin/menu
+        chmod +x /usr/bin/menu
+        success_msg "Created symlink: /usr/bin/menu -> /usr/bin/menu/menu.sh"
+    fi
+    
+    cd /
+    success_msg "Menu files updated successfully!"
+    echo ""
 }
 
 # Update SSH only
@@ -171,7 +185,6 @@ update_ssh() {
     echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    # Confirm update
     read -p "This will update SSH services. Continue? (y/N): " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo -e "${yellow}Update cancelled.${NC}"
@@ -180,50 +193,39 @@ update_ssh() {
     
     create_backup
     
-    # Delete old SSH files
-    delete_old_files "/usr/local/bin/ssh" "*.sh"
-    delete_old_files "/usr/local/bin/ssh" "*.py"
-    delete_old_files "/usr/local/bin/ssh" "*.js"
+    # Remove old ssh files
+    echo -e "${yellow}Removing old ssh files...${NC}"
+    rm -rf /usr/bin/ssh 2>/dev/null
+    mkdir -p /usr/bin/ssh
+    success_msg "Old ssh files removed"
     
     # Download SSH scripts
-    local ssh_files=(
-        "usernew.sh"
-        "trial.sh"
-        "delete.sh"
-        "hapus.sh"
-        "renew.sh"
-        "cek.sh"
-        "ceklim.sh"
-        "member.sh"
-        "xp.sh"
-        "autokill.sh"
-        "tendang.sh"
-        "add-host.sh"
-        "password"
-        "newudpgw"
-        "ssh-vpn.sh"
-        "fix-cek.sh"
-    )
+    echo -e "${cyan}Downloading SSH scripts...${NC}"
+    cd /usr/bin || return
     
-    for file in "${ssh_files[@]}"; do
-        download_file "$REPO_URL/ssh/$file" "/usr/local/bin/ssh/$file"
-    done
+    dl usernew ssh/usernew.sh
+    dl trial ssh/trial.sh
+    dl renew ssh/renew.sh
+    dl hapus ssh/hapus.sh
+    dl cek ssh/cek.sh
+    dl member ssh/member.sh
+    dl delete ssh/delete.sh
+    dl autokill ssh/autokill.sh
+    dl ceklim ssh/ceklim.sh
+    dl tendang ssh/tendang.sh
+    dl sshws ssh/sshws.sh
+    dl add-host ssh/add-host.sh
+    dl xp ssh/xp.sh
+    dl speedtest ssh/speedtest_cli.py
     
-    # Download utilities
-    download_file "$REPO_URL/ssh/speedtest_cli.py" "/usr/local/bin/speedtest_cli.py"
-    download_file "$REPO_URL/ssh/nginx.conf" "/etc/nginx/nginx.conf"
-    download_file "$REPO_URL/ssh/proxy3.js" "/usr/local/bin/proxy3.js"
-    download_file "$REPO_URL/ssh/cf" "/usr/local/bin/cf"
-    
-    # Update permissions
-    chmod +x /usr/local/bin/ssh/*.sh 2>/dev/null
-    chmod +x /usr/local/bin/ssh/*.py 2>/dev/null
-    chmod +x /usr/local/bin/ssh/* 2>/dev/null
+    chmod +x /usr/bin/ssh/*.sh 2>/dev/null
+    chmod +x /usr/bin/ssh/*.py 2>/dev/null
     
     # Restart SSH services
-    systemctl restart ssh
-    systemctl restart dropbear
+    systemctl restart ssh 2>/dev/null
+    systemctl restart dropbear 2>/dev/null
     
+    cd /
     success_msg "SSH services updated successfully!"
     echo ""
 }
@@ -235,7 +237,6 @@ update_xray() {
     echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    # Confirm update
     read -p "This will update Xray services. Continue? (y/N): " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo -e "${yellow}Update cancelled.${NC}"
@@ -244,123 +245,52 @@ update_xray() {
     
     create_backup
     
-    # Delete old Xray files
-    delete_old_files "/usr/local/bin/xray" "*.sh"
+    # Remove old xray files
+    echo -e "${yellow}Removing old xray files...${NC}"
+    rm -rf /usr/bin/xray 2>/dev/null
+    mkdir -p /usr/bin/xray
+    success_msg "Old xray files removed"
     
     # Download Xray scripts
-    local xray_files=(
-        "ins-xray.sh"
-        "add-ws.sh"
-        "add-vless.sh"
-        "add-tr.sh"
-        "add-ssws.sh"
-        "del-ws.sh"
-        "del-vless.sh"
-        "del-tr.sh"
-        "del-ssws.sh"
-        "renew-ws.sh"
-        "renew-vless.sh"
-        "renew-tr.sh"
-        "renew-ssws.sh"
-        "cek-ws.sh"
-        "cek-vless.sh"
-        "cek-tr.sh"
-        "cek-ssws.sh"
-        "trialvmess.sh"
-        "trialvless.sh"
-        "trialtrojan.sh"
-        "trialssws.sh"
-        "certv2ray.sh"
-    )
+    echo -e "${cyan}Downloading Xray scripts...${NC}"
+    cd /usr/bin || return
     
-    for file in "${xray_files[@]}"; do
-        download_file "$REPO_URL/xray/$file" "/usr/local/bin/xray/$file"
-    done
+    dl ins-xray xray/ins-xray.sh
+    dl add-ws xray/add-ws.sh
+    dl add-vless xray/add-vless.sh
+    dl add-tr xray/add-tr.sh
+    dl add-ssws xray/add-ssws.sh
+    dl del-ws xray/del-ws.sh
+    dl del-vless xray/del-vless.sh
+    dl del-tr xray/del-tr.sh
+    dl del-ssws xray/del-ssws.sh
+    dl renew-ws xray/renew-ws.sh
+    dl renew-vless xray/renew-vless.sh
+    dl renew-tr xray/renew-tr.sh
+    dl renew-ssws xray/renew-ssws.sh
+    dl cek-ws xray/cek-ws.sh
+    dl cek-vless xray/cek-vless.sh
+    dl cek-tr xray/cek-tr.sh
+    dl cek-ssws xray/cek-ssws.sh
+    dl trialvmess xray/trialvmess.sh
+    dl trialvless xray/trialvless.sh
+    dl trialtrojan xray/trialtrojan.sh
+    dl trialssws xray/trialssws.sh
+    dl certv2ray xray/certv2ray.sh
     
-    # Update permissions
-    chmod +x /usr/local/bin/xray/*.sh
+    chmod +x /usr/bin/xray/*.sh 2>/dev/null
     
-    # Update Xray core if needed
+    # Update Xray core
     if command -v xray &> /dev/null; then
-        echo -e "${cyan}Checking Xray core version...${NC}"
+        echo -e "${cyan}Updating Xray core...${NC}"
         bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
         success_msg "Xray core updated"
     fi
     
-    # Restart Xray
     systemctl restart xray 2>/dev/null || systemctl restart v2ray 2>/dev/null
     
+    cd /
     success_msg "Xray services updated successfully!"
-    echo ""
-}
-
-# Update Menu only
-# Update Menu only
-update_menu() {
-    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${cyan}              🔄 UPDATING MENU FILES                         ${NC}"
-    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
-    echo ""
-    
-    # Confirm update
-    read -p "This will update Menu files. Continue? (y/N): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        echo -e "${yellow}Update cancelled.${NC}"
-        return
-    fi
-    
-    create_backup
-    
-    # Delete old menu files
-    delete_old_files "/usr/local/bin/menu" "*.sh"
-    [ -f "/usr/local/bin/menu/versi" ] && rm -f "/usr/local/bin/menu/versi"
-    
-    # Download menu scripts
-    local menu_files=(
-        "menu.sh"
-        "m-sshovpn.sh"
-        "m-ssws.sh"
-        "m-vmess.sh"
-        "m-vless.sh"
-        "m-trojan.sh"
-        "m-xray.sh"
-        "m-system.sh"
-        "m-domain.sh"
-        "m-dns.sh"
-        "m-webmin.sh"
-        "auto-reboot.sh"
-        "restart.sh"
-        "running.sh"
-        "bw.sh"
-        "clearcache.sh"
-        "update.sh"
-        "tcp.sh"
-        "versi"
-    )
-    
-    for file in "${menu_files[@]}"; do
-        download_file "$REPO_URL/menu/$file" "/usr/local/bin/menu/$file"
-    done
-    
-    # Update permissions
-    chmod +x /usr/local/bin/menu/*.sh
-    
-    # ✅ FIXED: Create symlink properly
-    # Delete old symlink if it exists
-    [ -L "/usr/local/bin/menu" ] && rm -f /usr/local/bin/menu
-    
-    # Delete old menu.sh symlink in /usr/local/bin
-    [ -f "/usr/local/bin/menu.sh" ] && rm -f /usr/local/bin/menu.sh
-    
-    # Create proper symlink to the menu script
-    if [ -f "/usr/local/bin/menu/menu.sh" ]; then
-        # Create symlink in /usr/local/bin pointing to the script
-        ln -sf /usr/local/bin/menu/menu.sh /usr/local/bin/menu.sh
-        chmod +x /usr/local/bin/menu.sh
-        success_msg "Created symlink: /usr/local/bin/menu.sh -> /usr/local/bin/menu/menu.sh"
-    fi
-    
-    success_msg "Menu files updated successfully!"
     echo ""
 }
 
@@ -368,27 +298,24 @@ update_menu() {
 update_dnstt() {
     echo -e "${cyan}Updating DNSTT...${NC}"
     
-    # Delete old DNSTT files
-    delete_old_files "/usr/local/bin/dnstt" "*"
+    rm -rf /usr/bin/dnstt 2>/dev/null
+    mkdir -p /usr/bin/dnstt
     
-    local dnstt_files=(
-        "dnstt-client-linux-386"
-        "dnstt-client-linux-amd64"
-        "dnstt-client-linux-arm64"
-        "dnstt-client-linux-armv7"
-        "dnstt-server-linux-386"
-        "dnstt-server-linux-amd64"
-        "dnstt-server-linux-arm64"
-        "dnstt-server-linux-armv7"
-        "install-dnstt.sh"
-        "menu-dnstt.sh"
-    )
+    cd /usr/bin || return
     
-    for file in "${dnstt_files[@]}"; do
-        download_file "$REPO_URL/dnstt/$file" "/usr/local/bin/dnstt/$file"
-    done
+    dl dnstt-client-linux-386 dnstt/dnstt-client-linux-386
+    dl dnstt-client-linux-amd64 dnstt/dnstt-client-linux-amd64
+    dl dnstt-client-linux-arm64 dnstt/dnstt-client-linux-arm64
+    dl dnstt-client-linux-armv7 dnstt/dnstt-client-linux-armv7
+    dl dnstt-server-linux-386 dnstt/dnstt-server-linux-386
+    dl dnstt-server-linux-amd64 dnstt/dnstt-server-linux-amd64
+    dl dnstt-server-linux-arm64 dnstt/dnstt-server-linux-arm64
+    dl dnstt-server-linux-armv7 dnstt/dnstt-server-linux-armv7
+    dl install-dnstt dnstt/install-dnstt.sh
+    dl menu-dnstt dnstt/menu-dnstt.sh
     
-    chmod +x /usr/local/bin/dnstt/*
+    chmod +x /usr/bin/dnstt/*
+    cd /
     success_msg "DNSTT updated"
 }
 
@@ -396,40 +323,19 @@ update_dnstt() {
 update_sshws() {
     echo -e "${cyan}Updating SSHWS...${NC}"
     
-    # Delete old SSHWS files
-    delete_old_files "/usr/local/bin/sshws" "*"
+    rm -rf /usr/bin/sshws 2>/dev/null
+    mkdir -p /usr/bin/sshws
     
-    local sshws_files=(
-        "insshws.sh"
-        "socks-ssh.py"
-        "socks.py"
-        "ws-dropbear.service"
-        "ws-stunnel.service"
-    )
+    cd /usr/bin || return
     
-    for file in "${sshws_files[@]}"; do
-        download_file "$REPO_URL/sshws/$file" "/usr/local/bin/sshws/$file"
-    done
+    dl insshws sshws/insshws.sh
+    dl socks-ssh sshws/socks-ssh.py
+    dl socks sshws/socks.py
     
-    chmod +x /usr/local/bin/sshws/*.sh 2>/dev/null
-    chmod +x /usr/local/bin/sshws/*.py 2>/dev/null
+    chmod +x /usr/bin/sshws/*.sh 2>/dev/null
+    chmod +x /usr/bin/sshws/*.py 2>/dev/null
     
-    # Delete old systemd services
-    [ -f "/etc/systemd/system/ws-dropbear.service" ] && rm -f /etc/systemd/system/ws-dropbear.service
-    [ -f "/etc/systemd/system/ws-stunnel.service" ] && rm -f /etc/systemd/system/ws-stunnel.service
-    
-    # Copy new systemd services
-    if [ -f "/usr/local/bin/sshws/ws-dropbear.service" ]; then
-        cp /usr/local/bin/sshws/ws-dropbear.service /etc/systemd/system/
-    fi
-    if [ -f "/usr/local/bin/sshws/ws-stunnel.service" ]; then
-        cp /usr/local/bin/sshws/ws-stunnel.service /etc/systemd/system/
-    fi
-    
-    systemctl daemon-reload
-    systemctl restart ws-dropbear 2>/dev/null
-    systemctl restart ws-stunnel 2>/dev/null
-    
+    cd /
     success_msg "SSHWS updated"
 }
 
@@ -438,23 +344,19 @@ check_updates() {
     echo -e "${cyan}Checking for updates...${NC}"
     echo ""
     
-    # Check current versions
-    if [ -f "/usr/local/bin/menu/versi" ]; then
-        current_version=$(cat /usr/local/bin/menu/versi 2>/dev/null || echo "unknown")
+    if [ -f "/usr/bin/menu/versi" ]; then
+        current_version=$(cat /usr/bin/menu/versi 2>/dev/null || echo "unknown")
         echo -e "Current version: ${yellow}$current_version${NC}"
     else
         echo -e "Current version: ${red}Not installed${NC}"
     fi
     
-    # Check latest version from repo
-    latest_version=$(curl -s "$REPO_URL/menu/versi" 2>/dev/null || echo "unknown")
+    latest_version=$(curl -s "$GHBASE/menu/versi" 2>/dev/null || echo "unknown")
     echo -e "Latest version:  ${yellow}$latest_version${NC}"
     echo ""
     
-    if [ "$current_version" != "$latest_version" ] && [ "$latest_version" != "unknown" ] && [ "$current_version" != "Not installed" ]; then
+    if [ "$current_version" != "$latest_version" ] && [ "$latest_version" != "unknown" ]; then
         echo -e "${green}✓ New version available!${NC}"
-    elif [ "$current_version" = "Not installed" ]; then
-        echo -e "${yellow}No installation detected. Please run update.${NC}"
     else
         echo -e "${green}You have the latest version.${NC}"
     fi
@@ -468,7 +370,6 @@ restore_backup() {
     echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    # List available backups
     backups=($(ls -dt /root/backup_* 2>/dev/null))
     
     if [ ${#backups[@]} -eq 0 ]; then
@@ -494,32 +395,25 @@ restore_backup() {
     selected_backup="${backups[$backup_choice]}"
     echo -e "${yellow}Restoring from: $selected_backup${NC}"
     
-    # Confirm restore
     read -p "WARNING: This will overwrite current files. Continue? (y/N): " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo -e "${yellow}Restore cancelled.${NC}"
         return
     fi
     
-    # Restore files
-    [ -d "$selected_backup/xray" ] && cp -rf "$selected_backup/xray" /etc/ 2>/dev/null
-    [ -d "$selected_backup/v2ray" ] && cp -rf "$selected_backup/v2ray" /etc/ 2>/dev/null
-    [ -d "$selected_backup/ssh" ] && cp -rf "$selected_backup/ssh" /usr/local/bin/ 2>/dev/null
-    [ -d "$selected_backup/xray" ] && cp -rf "$selected_backup/xray" /usr/local/bin/ 2>/dev/null
-    [ -d "$selected_backup/menu" ] && cp -rf "$selected_backup/menu" /usr/local/bin/ 2>/dev/null
-    [ -d "$selected_backup/dnstt" ] && cp -rf "$selected_backup/dnstt" /usr/local/bin/ 2>/dev/null
-    [ -d "$selected_backup/sshws" ] && cp -rf "$selected_backup/sshws" /usr/local/bin/ 2>/dev/null
+    # Restore
+    [ -d "$selected_backup/menu" ] && cp -rf "$selected_backup/menu" /usr/bin/ 2>/dev/null
+    [ -d "$selected_backup/ssh" ] && cp -rf "$selected_backup/ssh" /usr/bin/ 2>/dev/null
+    [ -d "$selected_backup/xray" ] && cp -rf "$selected_backup/xray" /usr/bin/ 2>/dev/null
     [ -f "$selected_backup/passwd" ] && cp "$selected_backup/passwd" /etc/ 2>/dev/null
     [ -f "$selected_backup/shadow" ] && cp "$selected_backup/shadow" /etc/ 2>/dev/null
     [ -f "$selected_backup/domain.txt" ] && cp "$selected_backup/domain.txt" /root/ 2>/dev/null
     
-    # Restore permissions
-    chmod +x /usr/local/bin/ssh/*.sh 2>/dev/null
-    chmod +x /usr/local/bin/xray/*.sh 2>/dev/null
-    chmod +x /usr/local/bin/menu/*.sh 2>/dev/null
+    chmod +x /usr/bin/menu/*.sh 2>/dev/null
+    chmod +x /usr/bin/ssh/*.sh 2>/dev/null
+    chmod +x /usr/bin/xray/*.sh 2>/dev/null
     
     success_msg "Backup restored successfully!"
-    echo -e "${yellow}Please restart services if needed.${NC}"
 }
 
 # ---------- MAIN MENU ----------
@@ -550,29 +444,14 @@ main_menu() {
     echo ""
     
     case $choice in
-        1)
-            update_all
-            ;;
-        2)
-            update_ssh
-            ;;
-        3)
-            update_xray
-            ;;
-        4)
-            update_menu
-            ;;
-        5)
-            check_updates
-            ;;
-        6)
-            restore_backup
-            ;;
-        0)
-            echo -e "${green}Exiting...${NC}"
-            exit 0
-            ;;
-        *)
+        1) update_all ;;
+        2) update_ssh ;;
+        3) update_xray ;;
+        4) update_menu ;;
+        5) check_updates ;;
+        6) restore_backup ;;
+        0) echo -e "${green}Exiting...${NC}"; exit 0 ;;
+        *) 
             echo -e "${red}✗ Invalid option! Please select 0-6.${NC}"
             echo ""
             read -n 1 -s -r -p "Press any key to continue..."
@@ -585,29 +464,7 @@ main_menu() {
     main_menu
 }
 
-# ---------- INITIAL SETUP ----------
-setup_repository() {
-    # Create directories
-    mkdir -p /usr/local/bin/{ssh,xray,menu,dnstt,sshws}
-    mkdir -p /etc/marcscript
-    mkdir -p /etc/nginx
-    
-    # Create log file
-    touch "$LOG_FILE"
-    
-    # Set permissions
-    chmod 755 /usr/local/bin/{ssh,xray,menu,dnstt,sshws} 2>/dev/null
-    
-    # Add to PATH if not already there
-    if [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
-        echo 'export PATH=$PATH:/usr/local/bin' >> /etc/profile
-        export PATH=$PATH:/usr/local/bin
-    fi
-}
-
 # ---------- START SCRIPT ----------
-setup_repository
-
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
     echo -e "${red}✗ This script must be run as root!${NC}"
@@ -615,12 +472,13 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # Check internet connection
-if ! ping -c 1 google.com &> /dev/null; then
-    if ! ping -c 1 8.8.8.8 &> /dev/null; then
-        echo -e "${red}✗ No internet connection!${NC}"
-        exit 1
-    fi
+if ! ping -c 1 8.8.8.8 &> /dev/null; then
+    echo -e "${red}✗ No internet connection!${NC}"
+    exit 1
 fi
+
+# Create log file
+touch "$LOG_FILE"
 
 # Main execution
 main_menu
