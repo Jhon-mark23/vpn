@@ -105,12 +105,12 @@ git_push() {
     git status --short
     
     echo ""
-    read -p "Proceed with commit? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}Aborted.${NC}"
-        exit 0
-    fi
+  #  read -p "Proceed with commit? (y/N): " -n 1 -r
+  #  echo
+  #  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  #      echo -e "${YELLOW}Aborted.${NC}"
+  #      exit 0
+  #  fi
     
     # Stage and commit
     echo -e "${YELLOW}⏳ Staging changes...${NC}"

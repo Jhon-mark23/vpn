@@ -426,12 +426,14 @@ main_menu() {
             echo -e "${red}✗ Invalid option! Please select 0-6.${NC}"
             echo ""
             read -n 1 -s -r -p "Press any key to continue..."
+            clear
             main_menu
             ;;
     esac
     
     echo ""
     read -n 1 -s -r -p "Press any key to continue..."
+    clear
     main_menu
 }
 
