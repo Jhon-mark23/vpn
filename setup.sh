@@ -1,9 +1,9 @@
 #!/bin/bash
 # ============================================================
-# MARCSCRIPT VPN INSTALLER v3.0 (Unified Cert Edition)
+# MARCSCRIPT VPN INSTALLER v3.1 (Debian 13 Compatible)
 # All-in-One VPN Solution for Debian & Ubuntu
 # ============================================================
-# Version: 3.0 (Cleaned, Modular, Secure)
+# Version: 3.1 (Fixed PEP 668, Improved Error Handling)
 # Author: MarcScript
 # ============================================================
 
@@ -37,7 +37,8 @@ show_banner() {
 ║     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║            ║
 ║     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║            ║
 ║     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝            ║
-║           ALL-IN-ONE VPN INSTALLER v3.0                    ║
+║         ALL-IN-ONE VPN INSTALLER v3.1                      ║
+║         Debian 13 / Ubuntu Compatible                      ║
 ╚══════════════════════════════════════════════════════════════╝
 EOF
     echo ""
@@ -162,7 +163,9 @@ cleanup_iptables() {
     done
     
     # Save rules
-    netfilter-persistent save 2>/dev/null || true
+    if command -v netfilter-persistent &> /dev/null; then
+        netfilter-persistent save 2>/dev/null || true
+    fi
     iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
 }
 
@@ -220,7 +223,7 @@ install_dependencies() {
         "git" "curl" "wget" "jq" "python3" "python3-pip"
         "net-tools" "dnsutils" "iptables" "iptables-persistent"
         "sudo" "gnutls-bin" "dos2unix" "debconf-utils"
-        "ca-certificates" "openssl"
+        "ca-certificates" "openssl" "python3-dnslib"
     )
     
     apt install -y "${packages[@]}"
@@ -230,9 +233,22 @@ install_dependencies() {
         ln -sf /usr/bin/python3 /usr/bin/python
     fi
     
-    # Install pip packages
-    pip3 install --upgrade pip
-    pip3 install dnslib
+    # Install pip packages with --break-system-packages for Debian 13+
+    # PEP 668 protection workaround
+    if [[ "$OS" == "debian" ]] && [[ "$VER" == "13" ]] || [[ "$VER" == "trixie" ]]; then
+        log_warning "Debian 13 detected - using --break-system-packages flag"
+        pip3 install --upgrade pip --break-system-packages 2>/dev/null || true
+        # dnslib already installed via apt, but ensure it's available
+        if ! python3 -c "import dnslib" 2>/dev/null; then
+            pip3 install dnslib --break-system-packages
+        fi
+    else
+        # Old method for older systems
+        pip3 install --upgrade pip 2>/dev/null || true
+        if ! python3 -c "import dnslib" 2>/dev/null; then
+            pip3 install dnslib
+        fi
+    fi
     
     log_success "Dependencies installed"
 }
@@ -246,8 +262,23 @@ install_component() {
     
     log_info "Installing $name..."
     
-    if ! wget -q -O "$target" "$url"; then
-        log_error "Failed to download $name"
+    # Add retry logic
+    local max_retries=3
+    local retry=0
+    local success=0
+    
+    while [ $retry -lt $max_retries ] && [ $success -eq 0 ]; do
+        if wget -q -O "$target" "$url"; then
+            success=1
+        else
+            retry=$((retry + 1))
+            log_warning "Download failed, retry $retry/$max_retries"
+            sleep 2
+        fi
+    done
+    
+    if [ $success -eq 0 ]; then
+        log_error "Failed to download $name after $max_retries attempts"
         return 1
     fi
     
@@ -338,7 +369,11 @@ select_domain() {
             1)
                 show_banner
                 log_info "Generating random domain..."
-                wget -q -O /root/cf "${CDN}/cf"
+                wget -q -O /root/cf "${CDN}/cf" || {
+                    log_error "Failed to download Cloudflare script"
+                    sleep 2
+                    continue
+                }
                 chmod +x /root/cf
                 bash /root/cf | tee /root/install.log
                 
@@ -400,11 +435,11 @@ EOF
     touch /etc/log-create-shadowsocks.log
     
     # Save version
-    local version=$(curl -sS https://raw.githubusercontent.com/Jhon-mark23/vpn/main/menu/versi)
+    local version=$(curl -sS https://raw.githubusercontent.com/Jhon-mark23/vpn/main/menu/versi 2>/dev/null || echo "3.1")
     echo "$version" > /opt/.ver
     
     # Save IP
-    curl -sS ipv4.icanhazip.com > /etc/myipvps
+    curl -sS ipv4.icanhazip.com > /etc/myipvps 2>/dev/null || echo "0.0.0.0" > /etc/myipvps
     
     # Clean up
     rm -f /root/setup.sh /root/ins-xray.sh /root/insshws.sh
@@ -482,6 +517,13 @@ main() {
     finalize_installation
     show_complete
     secs_to_human "$(($(date +%s) - start_time))" | tee -a log-install.txt
+    
+    # Check if xray is running
+    if systemctl is-active --quiet xray.service; then
+        log_success "Xray service is running successfully!"
+    else
+        log_warning "Xray service may need manual start. Check with: systemctl status xray"
+    fi
     
     exit 0
 }
