@@ -1,158 +1,289 @@
 #!/bin/bash
 # ============================================================
-# INS-XRAY.SH - Install Xray (No Certificate Handling)
+# INS-XRAY.SH v2.0 - Install Xray (Universal)
+# Compatible with Ubuntu & Debian (including Debian 13)
 # ============================================================
 # Prerequisites:
-#   - Domain in /root/domain
-#   - Certificate should exist, but a self-signed fallback is
-#     created automatically if missing.
+#   - Domain in /root/domain or /root/domain.txt
+#   - Certificate should exist (auto-created if missing)
 #   - Nginx installed (for reverse proxy)
 # ============================================================
 
-MYIP=$(wget -qO- ipv4.icanhazip.com)
-echo "Checking VPS"
-clear
-echo ""
-date
-echo ""
-domain=$(cat /root/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null)
-domain=$(echo "$domain" | tr -d '[:space:]')
+set -euo pipefail
 
-if [[ -z "$domain" ]]; then
-    echo -e "\e[1;31mERROR: Domain not found! Please run setup.sh first.\e[0m"
-    exit 1
-fi
-sleep 0.5
-
+# ============================================================
+# COLOURS
+# ============================================================
 green='\e[0;32m'
 yell='\e[1;33m'
 red='\e[1;31m'
+blue='\e[0;34m'
+cyan='\e[0;36m'
 NC='\e[0m'
 
+# ============================================================
+# LOGGING FUNCTIONS
+# ============================================================
+print_info()    { echo -e "[ ${green}INFO${NC} ] $1"; }
+print_warn()    { echo -e "[ ${yell}WARN${NC} ] $1"; }
+print_error()   { echo -e "[ ${red}ERROR${NC} ] $1" >&2; }
+print_success() { echo -e "[ ${green}✓${NC} ] $1"; }
+print_step()    { echo -e "[ ${cyan}STEP${NC} ] $1"; }
+print_fatal()   { echo -e "[ ${red}FATAL${NC} ] $1" >&2; exit 1; }
+
+# ============================================================
+# ERROR HANDLING
+# ============================================================
+trap 'print_error "Script interrupted at line $LINENO"' INT TERM
+trap 'print_error "Error occurred at line $LINENO. Exit code: $?"' ERR
+
+# ============================================================
+# DETECT OS
+# ============================================================
 detect_os() {
+    print_step "Detecting operating system..."
+    
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         OS=$ID
         VER=$VERSION_ID
     else
-        echo "Cannot detect OS. Exiting..."
-        exit 1
+        print_fatal "Cannot detect OS"
     fi
-    echo -e "[ ${green}INFO${NC} ] Detected OS: $OS $VER"
+    
+    print_info "Detected OS: $OS $VER"
+    
     if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
-        echo -e "[ ${red}ERROR${NC} ] This script only supports Ubuntu or Debian"
-        exit 1
+        print_fatal "This script only supports Ubuntu or Debian"
+    fi
+    
+    # Check if Debian 13 (Trixie) or later
+    if [[ "$OS" == "debian" ]] && [[ "$VER" == "13" || "$VER" == "trixie" || "$VER" -ge 13 ]]; then
+        IS_DEBIAN_13=true
+        print_info "Debian 13+ detected - using compatibility mode"
+    else
+        IS_DEBIAN_13=false
     fi
 }
 
-check_success() {
-    if [ $? -eq 0 ]; then
-        echo -e "[ ${green}OK${NC} ] $1"
+# ============================================================
+# CHECK ROOT
+# ============================================================
+if [ "$EUID" -ne 0 ]; then
+    print_fatal "Please run as root"
+fi
+
+# ============================================================
+# GET DOMAIN
+# ============================================================
+get_domain() {
+    print_step "Getting domain..."
+    
+    # Try multiple sources for domain
+    DOMAIN=$(cat /root/domain 2>/dev/null || \
+             cat /root/domain.txt 2>/dev/null || \
+             cat /etc/xray/domain 2>/dev/null || \
+             cat /etc/v2ray/domain 2>/dev/null || \
+             echo "")
+    
+    DOMAIN=$(echo "$DOMAIN" | tr -d '[:space:]')
+    
+    if [[ -z "$DOMAIN" ]]; then
+        print_error "Domain not found in common locations!"
+        print_info "Please run setup.sh first or provide domain manually."
+        
+        read -rp "Enter your domain: " DOMAIN
+        DOMAIN=$(echo "$DOMAIN" | tr -d '[:space:]')
+        
+        if [[ -z "$DOMAIN" ]]; then
+            print_fatal "Domain cannot be empty"
+        fi
+        
+        # Save domain
+        echo "$DOMAIN" > /root/domain
+        echo "$DOMAIN" > /root/domain.txt
+    fi
+    
+    print_info "Domain: $DOMAIN"
+    export DOMAIN
+}
+
+# ============================================================
+# INSTALL PACKAGES
+# ============================================================
+install_packages() {
+    print_step "Installing required packages..."
+    
+    export DEBIAN_FRONTEND=noninteractive
+    export NEEDRESTART_MODE=a
+    
+    # Update package list with retry
+    local retry=0
+    while [ $retry -lt 3 ]; do
+        if apt update -y 2>/dev/null; then
+            break
+        fi
+        retry=$((retry + 1))
+        print_warn "Failed to update package list, retry $retry/3"
+        sleep 3
+    done
+    
+    local packages=(
+        "iptables" "iptables-persistent" "net-tools" "screen"
+        "curl" "socat" "xz-utils" "wget" "apt-transport-https"
+        "gnupg" "gnupg2" "dnsutils" "lsb-release" "bash-completion"
+        "cron" "openssl" "zip" "pwgen" "ca-certificates" "jq"
+    )
+    
+    # OS-specific packages
+    if [[ "$OS" == "ubuntu" ]]; then
+        packages+=("netcat-openbsd")
+    elif [[ "$OS" == "debian" ]]; then
+        packages+=("netcat-traditional" "software-properties-common")
+        # For Debian 13, use different package names if needed
+        if [[ "$IS_DEBIAN_13" == true ]]; then
+            packages+=("python3-full" "python3-pip")
+        fi
+    fi
+    
+    # Install packages one by one with retry
+    for pkg in "${packages[@]}"; do
+        if dpkg -l | grep -q "^ii  $pkg "; then
+            continue
+        fi
+        
+        retry=0
+        while [ $retry -lt 3 ]; do
+            if apt install -y "$pkg" 2>/dev/null; then
+                print_info "Installed: $pkg"
+                break
+            fi
+            retry=$((retry + 1))
+            print_warn "Failed to install $pkg, retry $retry/3"
+            sleep 2
+        done
+        
+        if [ $retry -eq 3 ]; then
+            print_warn "Failed to install $pkg, continuing..."
+        fi
+    done
+    
+    print_success "Package installation completed"
+}
+
+# ============================================================
+# SETUP CERTIFICATE
+# ============================================================
+setup_certificate() {
+    print_step "Setting up certificate..."
+    
+    mkdir -p /etc/xray /etc/ssl/vpn
+    
+    if [ -f /etc/xray/xray.crt ] && [ -f /etc/xray/xray.key ]; then
+        print_info "Certificate already exists in /etc/xray/"
+        return 0
+    fi
+    
+    print_warn "Xray certificate not found in /etc/xray/"
+    
+    # Try create-cert.sh if available
+    if [ -f /usr/local/bin/create-cert.sh ]; then
+        print_info "Running create-cert.sh to obtain certificate..."
+        if bash /usr/local/bin/create-cert.sh 2>/dev/null; then
+            if [ -f /etc/xray/xray.crt ] && [ -f /etc/xray/xray.key ]; then
+                print_success "Certificate obtained via create-cert.sh"
+                return 0
+            fi
+        fi
+        print_warn "create-cert.sh failed or didn't create certificate"
+    fi
+    
+    # Generate self-signed fallback
+    print_info "Generating self-signed fallback certificate..."
+    
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/ssl/vpn/privkey.pem \
+        -out /etc/ssl/vpn/fullchain.pem \
+        -subj "/C=PH/ST=Metro Manila/L=Manila/O=VPN/CN=$DOMAIN" 2>/dev/null
+    
+    if [ -f /etc/ssl/vpn/fullchain.pem ] && [ -f /etc/ssl/vpn/privkey.pem ]; then
+        ln -sf /etc/ssl/vpn/fullchain.pem /etc/xray/xray.crt
+        ln -sf /etc/ssl/vpn/privkey.pem /etc/xray/xray.key
+        chmod 600 /etc/xray/xray.key
+        print_success "Self-signed certificate created"
     else
-        echo -e "[ ${red}FAILED${NC} ] $1"
+        print_error "Failed to create self-signed certificate!"
         return 1
     fi
 }
 
-detect_os
-export DEBIAN_FRONTEND=noninteractive
-export NEEDRESTART_MODE=a
-
-mkdir -p /etc/xray
-
-# ---- Certificate Handling (non‑blocking) ----
-if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
-    echo -e "[ ${yell}WARNING${NC} ] Xray certificate not found in /etc/xray/"
-    if [ -f /usr/local/bin/create-cert.sh ]; then
-        echo -e "[ ${green}INFO${NC} ] Running create-cert.sh to obtain certificate..."
-        sed -i 's/\r$//' /usr/local/bin/create-cert.sh   # fix line endings
-        bash /usr/local/bin/create-cert.sh
-    else
-        echo -e "[ ${yell}WARNING${NC} ] create-cert.sh not found. Generating self-signed fallback..."
-        mkdir -p /etc/ssl/vpn
-        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout /etc/ssl/vpn/privkey.pem \
-            -out /etc/ssl/vpn/fullchain.pem \
-            -subj "/C=PH/ST=Metro Manila/L=Manila/O=VPN/CN=$domain" 2>/dev/null
-        ln -sf /etc/ssl/vpn/fullchain.pem /etc/xray/xray.crt
-        ln -sf /etc/ssl/vpn/privkey.pem /etc/xray/xray.key
-        chmod 600 /etc/xray/xray.key
+# ============================================================
+# INSTALL XRAY
+# ============================================================
+install_xray() {
+    print_step "Installing Xray core..."
+    
+    # Create directories
+    mkdir -p /var/log/xray /etc/xray /run/xray
+    chown www-data:www-data /var/log/xray 2>/dev/null || true
+    chown www-data:www-data /run/xray 2>/dev/null || true
+    chmod 755 /var/log/xray /run/xray
+    
+    # Touch log files
+    touch /var/log/xray/access.log /var/log/xray/error.log 2>/dev/null
+    chown www-data:www-data /var/log/xray/*.log 2>/dev/null || true
+    
+    # Install Xray
+    print_info "Downloading and installing Xray..."
+    
+    local retry=0
+    while [ $retry -lt 3 ]; do
+        if bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data 2>/dev/null; then
+            break
+        fi
+        retry=$((retry + 1))
+        print_warn "Xray installation failed, retry $retry/3"
+        sleep 3
+    done
+    
+    if [ $retry -eq 3 ]; then
+        print_warn "Xray installation had issues, trying force reinstall..."
+        bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data --force 2>/dev/null || {
+            print_error "Xray installation failed!"
+            return 1
+        }
     fi
-    # Double-check after attempt
-    if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
-        echo -e "[ ${red}ERROR${NC} ] Failed to provide a certificate. Xray will start but may not work correctly."
-    fi
-fi
-
-echo -e "[ ${green}INFO${NC} ] Installing required packages..."
-
-apt update -y >/dev/null 2>&1
-
-PACKAGES="iptables iptables-persistent net-tools screen curl socat xz-utils wget 
-apt-transport-https gnupg gnupg2 dnsutils lsb-release bash-completion cron 
-openssl zip pwgen ca-certificates"
-for pkg in $PACKAGES; do
-    if ! dpkg -l | grep -q "^ii  $pkg "; then
-        apt install -y $pkg >/dev/null 2>&1
-    fi
-done
-
-if [[ "$OS" == "ubuntu" ]]; then
-    apt install -y netcat-openbsd >/dev/null 2>&1
-elif [[ "$OS" == "debian" ]]; then
-    apt install -y netcat-traditional >/dev/null 2>&1 || apt install -y netcat >/dev/null 2>&1 || true
-    apt install -y software-properties-common >/dev/null 2>&1
-fi
-check_success "Package installation"
-
-sleep 0.5
-echo -e "[ ${green}INFO${NC} ] Setting timezone"
-timedatectl set-timezone Asia/Manila 2>/dev/null || true
-timedatectl set-ntp true 2>/dev/null || true
-
-# ---- Xray core ----
-sleep 0.5
-echo -e "[ ${green}INFO${NC} ] Downloading & Installing Xray core"
-
-domainSock_dir="/run/xray"
-[ ! -d $domainSock_dir ] && mkdir -p $domainSock_dir
-chown www-data.www-data $domainSock_dir 2>/dev/null || true
-
-mkdir -p /var/log/xray
-mkdir -p /etc/xray
-chown www-data.www-data /var/log/xray 2>/dev/null || true
-chmod 755 /var/log/xray
-
-touch /var/log/xray/access.log /var/log/xray/error.log /var/log/xray/access2.log /var/log/xray/error2.log 2>/dev/null
-chown www-data.www-data /var/log/xray/*.log 2>/dev/null || true
-
-# Install Xray binary
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data
-check_success "Xray installation"
-
-# Verify binary exists, if not force reinstall
-if [ ! -f /usr/local/bin/xray ]; then
-    echo -e "[ ${yell}WARNING${NC} ] Xray binary missing, trying again..."
-    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data --force
+    
+    # Verify binary
     if [ ! -f /usr/local/bin/xray ]; then
-        echo -e "[ ${red}ERROR${NC} ] Xray installation failed. Please install manually."
-        exit 1
+        print_error "Xray binary not found!"
+        return 1
     fi
-fi
+    
+    # Check version
+    local xray_version=$(/usr/local/bin/xray version 2>/dev/null | head -n1 || echo "Unknown")
+    print_success "Xray installed: $xray_version"
+    
+    # Generate UUID
+    UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "d5b8b8e3-8b8e-4b8e-8b8e-8b8e8b8e8b8e")
+    print_info "UUID: $UUID"
+}
 
-# ---- Generate UUID ----
-uuid=$(cat /proc/sys/kernel/random/uuid)
-
-# ---- Xray config ----
-cat > /etc/xray/config.json << END
+# ============================================================
+# CONFIGURE XRAY
+# ============================================================
+configure_xray() {
+    print_step "Configuring Xray..."
+    
+    cat > /etc/xray/config.json << END
 {
-  "log" : {
+  "log": {
     "access": "/var/log/xray/access.log",
     "error": "/var/log/xray/error.log",
     "loglevel": "warning"
   },
   "inbounds": [
-      {
+    {
       "listen": "127.0.0.1",
       "port": 10085,
       "protocol": "dokodemo-door",
@@ -161,168 +292,160 @@ cat > /etc/xray/config.json << END
       },
       "tag": "api"
     },
-   {
-     "listen": "127.0.0.1",
-     "port": "14016",
-     "protocol": "vless",
+    {
+      "listen": "127.0.0.1",
+      "port": "14016",
+      "protocol": "vless",
       "settings": {
-          "decryption":"none",
-            "clients": [
-               {
-                 "id": "${uuid}"
-#vless
-             }
-          ]
-       },
-       "streamSettings":{
-         "network": "ws",
-            "wsSettings": {
-                "path": "/vless"
+        "decryption": "none",
+        "clients": [
+          {
+            "id": "${UUID}"
           }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/vless"
         }
-     },
-     {
-     "listen": "127.0.0.1",
-     "port": "23456",
-     "protocol": "vmess",
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": "23456",
+      "protocol": "vmess",
       "settings": {
-            "clients": [
-               {
-                 "id": "${uuid}",
-                 "alterId": 0
-#vmess
-             }
-          ]
-       },
-       "streamSettings":{
-         "network": "ws",
-            "wsSettings": {
-                "path": "/vmess"
+        "clients": [
+          {
+            "id": "${UUID}",
+            "alterId": 0
           }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/vmess"
         }
-     },
+      }
+    },
     {
       "listen": "127.0.0.1",
       "port": "25432",
       "protocol": "trojan",
       "settings": {
-          "decryption":"none",
-           "clients": [
-              {
-                 "password": "${uuid}"
-#trojanws
-              }
-          ],
-         "udp": true
-       },
-       "streamSettings":{
-           "network": "ws",
-           "wsSettings": {
-               "path": "/trojan-ws"
-            }
-         }
-     },
-    {
-         "listen": "127.0.0.1",
-        "port": "30300",
-        "protocol": "shadowsocks",
-        "settings": {
-           "clients": [
-           {
-           "method": "aes-128-gcm",
-          "password": "${uuid}"
-#ssws
-           }
-          ],
-          "network": "tcp,udp"
-       },
-       "streamSettings":{
-          "network": "ws",
-             "wsSettings": {
-               "path": "/ss-ws"
-           }
-        }
-     },
-      {
-        "listen": "127.0.0.1",
-     "port": "24456",
-        "protocol": "vless",
-        "settings": {
-         "decryption":"none",
-           "clients": [
-             {
-               "id": "${uuid}"
-#vlessgrpc
-             }
-          ]
-       },
-          "streamSettings":{
-             "network": "grpc",
-             "grpcSettings": {
-                "serviceName": "vless-grpc"
-           }
-        }
-     },
-     {
-      "listen": "127.0.0.1",
-     "port": "31234",
-     "protocol": "vmess",
-      "settings": {
-            "clients": [
-               {
-                 "id": "${uuid}",
-                 "alterId": 0
-#vmessgrpc
-             }
-          ]
-       },
-       "streamSettings":{
-         "network": "grpc",
-            "grpcSettings": {
-                "serviceName": "vmess-grpc"
-          }
-        }
-     },
-     {
-        "listen": "127.0.0.1",
-     "port": "33456",
-        "protocol": "trojan",
-        "settings": {
-          "decryption":"none",
-             "clients": [
-               {
-                 "password": "${uuid}"
-#trojangrpc
-               }
-           ]
-        },
-         "streamSettings":{
-         "network": "grpc",
-           "grpcSettings": {
-               "serviceName": "trojan-grpc"
-         }
-      }
-   },
-   {
-    "listen": "127.0.0.1",
-    "port": "30310",
-    "protocol": "shadowsocks",
-    "settings": {
+        "decryption": "none",
         "clients": [
           {
-             "method": "aes-128-gcm",
-             "password": "${uuid}"
-#ssgrpc
-           }
-         ],
-           "network": "tcp,udp"
-      },
-    "streamSettings":{
-     "network": "grpc",
-        "grpcSettings": {
-           "serviceName": "ss-grpc"
+            "password": "${UUID}"
           }
-       }
+        ],
+        "udp": true
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/trojan-ws"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": "30300",
+      "protocol": "shadowsocks",
+      "settings": {
+        "clients": [
+          {
+            "method": "aes-128-gcm",
+            "password": "${UUID}"
+          }
+        ],
+        "network": "tcp,udp"
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/ss-ws"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": "24456",
+      "protocol": "vless",
+      "settings": {
+        "decryption": "none",
+        "clients": [
+          {
+            "id": "${UUID}"
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "vless-grpc"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": "31234",
+      "protocol": "vmess",
+      "settings": {
+        "clients": [
+          {
+            "id": "${UUID}",
+            "alterId": 0
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "vmess-grpc"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": "33456",
+      "protocol": "trojan",
+      "settings": {
+        "decryption": "none",
+        "clients": [
+          {
+            "password": "${UUID}"
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "trojan-grpc"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": "30310",
+      "protocol": "shadowsocks",
+      "settings": {
+        "clients": [
+          {
+            "method": "aes-128-gcm",
+            "password": "${UUID}"
+          }
+        ],
+        "network": "tcp,udp"
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "ss-grpc"
+        }
+      }
     }
   ],
   "outbounds": [
@@ -341,44 +464,29 @@ cat > /etc/xray/config.json << END
       {
         "type": "field",
         "ip": [
-          "0.0.0.0/8",
-          "10.0.0.0/8",
-          "100.64.0.0/10",
-          "169.254.0.0/16",
-          "172.16.0.0/12",
-          "192.0.0.0/24",
-          "192.0.2.0/24",
-          "192.168.0.0/16",
-          "198.18.0.0/15",
-          "198.51.100.0/24",
-          "203.0.113.0/24",
-          "::1/128",
-          "fc00::/7",
-          "fe80::/10"
+          "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10",
+          "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24",
+          "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15",
+          "198.51.100.0/24", "203.0.113.0/24",
+          "::1/128", "fc00::/7", "fe80::/10"
         ],
         "outboundTag": "blocked"
       },
       {
-        "inboundTag": [
-          "api"
-        ],
+        "inboundTag": ["api"],
         "outboundTag": "api",
         "type": "field"
       },
       {
         "type": "field",
         "outboundTag": "blocked",
-        "protocol": [
-          "bittorrent"
-        ]
+        "protocol": ["bittorrent"]
       }
     ]
   },
   "stats": {},
   "api": {
-    "services": [
-      "StatsService"
-    ],
+    "services": ["StatsService"],
     "tag": "api"
   },
   "policy": {
@@ -391,17 +499,15 @@ cat > /etc/xray/config.json << END
     "system": {
       "statsInboundUplink": true,
       "statsInboundDownlink": true,
-      "statsOutboundUplink" : true,
-      "statsOutboundDownlink" : true
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
     }
   }
 }
 END
 
-rm -rf /etc/systemd/system/xray.service.d
-rm -rf /etc/systemd/system/xray@.service
-
-cat <<EOF> /etc/systemd/system/xray.service
+    # Create systemd service
+    cat > /etc/systemd/system/xray.service <<'EOF'
 [Unit]
 Description=Xray Service
 Documentation=https://github.com/xtls
@@ -422,25 +528,33 @@ LimitNOFILE=51200
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/systemd/system/runn.service <<EOF
-[Unit]
-Description=Mantap-Sayang
-After=network.target
+    chmod 644 /etc/systemd/system/xray.service
+    
+    print_success "Xray configuration created"
+}
 
-[Service]
-Type=simple
-ExecStartPre=-/usr/bin/mkdir -p /var/run/xray
-ExecStart=/usr/bin/chown www-data:www-data /var/run/xray
-Restart=on-abort
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# ---- Nginx Config (with maximum TLS compatibility) ----
-echo -e "[ ${green}INFO${NC} ] Creating nginx configuration..."
-
-cat > /etc/nginx/conf.d/xray.conf <<'EOF'
+# ============================================================
+# CONFIGURE NGINX
+# ============================================================
+configure_nginx() {
+    print_step "Configuring Nginx..."
+    
+    # Ensure nginx is installed
+    if ! command -v nginx &>/dev/null; then
+        print_warn "Nginx not found, installing..."
+        apt install -y nginx 2>/dev/null || {
+            print_error "Failed to install nginx"
+            return 1
+        }
+    fi
+    
+    # Create web root
+    mkdir -p /home/vps/public_html
+    echo "<h1>VPN Server</h1>" > /home/vps/public_html/index.html
+    chown -R www-data:www-data /home/vps/public_html
+    
+    # Create nginx config
+    cat > /etc/nginx/conf.d/xray.conf <<'EOF'
 server {
     listen 81;
     server_name _;
@@ -451,7 +565,7 @@ server {
 server {
     listen 80;
     listen [::]:80;
-    server_name *.$domain;
+    server_name *.$DOMAIN;
     root /home/vps/public_html;
 
     location = /vmess {
@@ -510,10 +624,9 @@ server {
     listen 443 ssl reuseport;
     listen [::]:443 ssl reuseport;
     http2 on;
-    server_name *.$domain;
+    server_name *.$DOMAIN;
     ssl_certificate /etc/xray/xray.crt;
     ssl_certificate_key /etc/xray/xray.key;
-    # Wide cipher/protocol list for old Android/VPN apps
     ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
     ssl_ciphers DEFAULT:!aNULL:!eNULL:!LOW:!MD5:!EXP:!RC4;
     root /home/vps/public_html;
@@ -601,80 +714,199 @@ server {
 }
 EOF
 
-sed -i "s/\\\$domain/$domain/g" /etc/nginx/conf.d/xray.conf
-
-# ---- Restart services ----
-echo -e "[ ${green}INFO${NC} ] Restarting all services"
-systemctl daemon-reload
-
-systemctl enable xray 2>/dev/null || true
-systemctl restart xray
-check_success "Xray service restart"
-
-nginx -t 2>/dev/null
-if [ $? -eq 0 ]; then
-    systemctl restart nginx
-    check_success "Nginx restart"
-else
-    echo -e "[ ${red}ERROR${NC} ] Nginx configuration test failed!"
-    echo -e "[ ${yell}WARNING${NC} ] Please check: nginx -t"
-fi
-
-systemctl enable runn 2>/dev/null || true
-systemctl restart runn 2>/dev/null || true
-
-# ---- Download management scripts (with CRLF fix) ----
-cd /usr/bin/
-echo -e "[ ${green}INFO${NC} ] Downloading management scripts..."
-
-# Helper to download, fix line endings and make executable
-dl() {
-    wget -q -O "$1" "$2" && chmod +x "$1" && sed -i 's/\r$//' "$1"
+    # Replace domain placeholder
+    sed -i "s/\\\$DOMAIN/$DOMAIN/g" /etc/nginx/conf.d/xray.conf
+    
+    # Test nginx config
+    if nginx -t 2>/dev/null; then
+        print_success "Nginx configuration valid"
+    else
+        print_error "Nginx configuration test failed!"
+        nginx -t 2>&1
+        return 1
+    fi
+    
+    # Restart nginx
+    systemctl restart nginx 2>/dev/null || {
+        print_warn "Failed to restart nginx"
+        return 1
+    }
+    
+    print_success "Nginx configured"
 }
 
-BASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray"
+# ============================================================
+# DOWNLOAD MANAGEMENT SCRIPTS
+# ============================================================
+download_scripts() {
+    print_step "Downloading management scripts..."
+    
+    cd /usr/bin/ || {
+        print_error "Cannot change to /usr/bin/"
+        return 1
+    }
+    
+    local BASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray"
+    
+    # Helper function to download with retry
+    dl() {
+        local name=$1
+        local url="$BASE/$name.sh"
+        local target="/usr/bin/$name"
+        
+        local retry=0
+        while [ $retry -lt 3 ]; do
+            if wget -q -O "$target" "$url" 2>/dev/null; then
+                chmod +x "$target"
+                sed -i 's/\r$//' "$target"
+                return 0
+            fi
+            retry=$((retry + 1))
+            sleep 2
+        done
+        print_warn "Failed to download $name"
+        return 1
+    }
+    
+    local scripts=(
+        "add-ws" "trialvmess" "renew-ws" "del-ws" "cek-ws"
+        "add-vless" "trialvless" "renew-vless" "del-vless" "cek-vless"
+        "add-tr" "trialtrojan" "del-tr" "renew-tr" "cek-tr"
+        "add-ssws" "trialssws" "del-ssws" "renew-ssws" "cek-ssws"
+    )
+    
+    for script in "${scripts[@]}"; do
+        dl "$script" &
+    done
+    
+    wait
+    
+    print_success "Management scripts downloaded"
+}
 
-dl add-ws         "$BASE/add-ws.sh"
-dl trialvmess     "$BASE/trialvmess.sh"
-dl renew-ws       "$BASE/renew-ws.sh"
-dl del-ws         "$BASE/del-ws.sh"
-dl cek-ws         "$BASE/cek-ws.sh"
+# ============================================================
+# START SERVICES
+# ============================================================
+start_services() {
+    print_step "Starting services..."
+    
+    systemctl daemon-reload
+    
+    # Start Xray
+    systemctl enable xray 2>/dev/null || true
+    if systemctl restart xray 2>/dev/null; then
+        print_success "Xray started successfully"
+    else
+        print_error "Failed to start Xray"
+        journalctl -u xray --no-pager -n 20 2>/dev/null || true
+        return 1
+    fi
+    
+    # Start Nginx
+    if systemctl restart nginx 2>/dev/null; then
+        print_success "Nginx started successfully"
+    else
+        print_error "Failed to start Nginx"
+        journalctl -u nginx --no-pager -n 10 2>/dev/null || true
+        return 1
+    fi
+    
+    # Run helper service
+    cat > /etc/systemd/system/runn.service <<'EOF'
+[Unit]
+Description=Mantap-Sayang
+After=network.target
 
-dl add-vless      "$BASE/add-vless.sh"
-dl trialvless     "$BASE/trialvless.sh"
-dl renew-vless    "$BASE/renew-vless.sh"
-dl del-vless      "$BASE/del-vless.sh"
-dl cek-vless      "$BASE/cek-vless.sh"
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/mkdir -p /var/run/xray
+ExecStart=/usr/bin/chown www-data:www-data /var/run/xray
+Restart=on-abort
 
-dl add-tr         "$BASE/add-tr.sh"
-dl trialtrojan    "$BASE/trialtrojan.sh"
-dl del-tr         "$BASE/del-tr.sh"
-dl renew-tr       "$BASE/renew-tr.sh"
-dl cek-tr         "$BASE/cek-tr.sh"
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    systemctl enable runn 2>/dev/null || true
+    systemctl restart runn 2>/dev/null || true
+}
 
-dl add-ssws       "$BASE/add-ssws.sh"
-dl trialssws      "$BASE/trialssws.sh"
-dl del-ssws       "$BASE/del-ssws.sh"
-dl renew-ssws     "$BASE/renew-ssws.sh"
-dl cek-ssws       "$BASE/cek-ssws.sh"
+# ============================================================
+# DISPLAY SUMMARY
+# ============================================================
+display_summary() {
+    clear
+    echo -e "${green}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${green}║${NC}         ${green}✅ XRAY INSTALLATION COMPLETE!                  ${green}║${NC}"
+    echo -e "${green}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${cyan}📡 XRAY INFORMATION:${NC}"
+    echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    printf "  ${green}%-14s${NC} : ${green}%s${NC}\n" "Domain" "$DOMAIN"
+    printf "  ${green}%-14s${NC} : ${green}%s${NC}\n" "UUID" "$UUID"
+    echo ""
+    
+    echo -e "${cyan}🔧 SERVICE STATUS:${NC}"
+    echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
+    if systemctl is-active --quiet xray; then
+        printf "  ${green}%-14s${NC} : ${green}✅ Running${NC}\n" "Xray"
+    else
+        printf "  ${green}%-14s${NC} : ${red}❌ Stopped${NC}\n" "Xray"
+    fi
+    
+    if systemctl is-active --quiet nginx; then
+        printf "  ${green}%-14s${NC} : ${green}✅ Running${NC}\n" "Nginx"
+    else
+        printf "  ${green}%-14s${NC} : ${red}❌ Stopped${NC}\n" "Nginx"
+    fi
+    echo ""
+    
+    echo ""
+    
+    echo -e "${cyan}🔧 COMMANDS:${NC}"
+    echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  ${green}Status${NC}  : systemctl status xray"
+    echo -e "  ${green}Restart${NC} : systemctl restart xray"
+    echo -e "  ${green}Logs${NC}    : journalctl -u xray -f"
+    echo ""
+}
 
-# Move domain file
-mv /root/domain /etc/xray/ 2>/dev/null || true
-[ -f /root/scdomain ] && rm /root/scdomain > /dev/null 2>&1
+# ============================================================
+# MAIN
+# ============================================================
+main() {
+    clear
+    echo -e "${green}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${green}║${NC}         ${green}🔒 XRAY INSTALLER v2.0                          ${green}║${NC}"
+    echo -e "${green}║${NC}         ${green}Universal Ubuntu & Debian Support               ${green}║${NC}"
+    echo -e "${green}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    detect_os
+    get_domain
+    install_packages
+    setup_certificate || print_warn "Certificate setup had issues, continuing..."
+    install_xray || print_fatal "Xray installation failed!"
+    configure_xray
+    configure_nginx || print_warn "Nginx configuration had issues, continuing..."
+    download_scripts
+    start_services
+    
+    # Save domain to /etc/xray
+    echo "$DOMAIN" > /etc/xray/domain 2>/dev/null || true
+    rm -f /root/domain /root/domain.txt 2>/dev/null || true
+    
+    display_summary
+    
+    print_success "Xray installation completed!"
+    
+    # Clean up
+    rm -f ins-xray.sh 2>/dev/null || true
+}
 
-# Final verification
-sleep 2
-if systemctl is-active --quiet xray; then
-    echo -e "[ ${green}✓${NC} ] Xray is running"
-else
-    echo -e "[ ${red}✗${NC} ] Xray is not running. Check: journalctl -u xray"
-fi
-if systemctl is-active --quiet nginx; then
-    echo -e "[ ${green}✓${NC} ] Nginx is running"
-else
-    echo -e "[ ${red}✗${NC} ] Nginx is not running. Check: journalctl -u nginx"
-fi
-
-clear
-rm -f ins-xray.sh
-echo -e "${green}Xray installation complete!${NC}"
+# ============================================================
+# SCRIPT ENTRY
+# ============================================================
+main "$@"

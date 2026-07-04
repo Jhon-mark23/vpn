@@ -1,17 +1,15 @@
 #!/bin/bash
 # ============================================================
-# MARCSCRIPT VPN SYSTEM - MAIN INTERACTIVE SYSTEM DASHBOARD
+# MARCSCRIPT VPN SYSTEM - FAHRI ALIMUDIN DESIGN REPLICA
 # ============================================================
 
 MYIP=$(curl -sS ifconfig.me)
-NET_IFACE=$(ip -o -4 route show to default | awk '{print $5}' | head -1)
-echo "Checking VPS..."
 clear
 
 # ---------- COLOURS ----------
 purple='\033[0;35m'
 blue='\033[0;34m'
-green='\033[0;32m'
+green='\033[1;32m'
 cyan='\033[1;36m'
 yellow='\033[1;33m'
 red='\033[1;31m'
@@ -22,7 +20,7 @@ NC='\033[0m'
 # VPS INFORMATION ENGINE
 # ============================================================
 domain=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "None")
-PUBKEY=$(cat "/etc/slowdns/server.pub")
+PUBKEY=$(cat "/etc/slowdns/server.pub" 2>/dev/null || echo "None")
 nsdomain="ns.${domain}"
 
 # SSL Certificate Status Engine
@@ -48,16 +46,41 @@ fi
 uptime="$(uptime -p | cut -d " " -f 2-10)"
 os_name=$(hostnamectl | grep "Operating System" | cut -d ':' -f2 | sed 's/^[ \t]*//')
 
-# Memory Information Realtime Calculations
+# Memory & CPU
 tram=$( free -m | awk 'NR==2 {print $2}' )
 uram=$( free -m | awk 'NR==2 {print $3}' )
+loadcpu=$(uptime | awk -F'load average:' '{print $2}')
+date_now=$(date +%d-%m-%Y)
+time_now=$(date +%H:%M:%S)
 
 # Client System Metadata Profile
 Exp2="Lifetime"
 Name="marc"
 
 # ============================================================
-# UNIFIED MARCSCRIPT INTERACTIVE UI
+# SERVICE STATUS ENGINE (from running.sh)
+# ============================================================
+green_status() { echo -e "\033[32;1m${*}\033[0m"; }
+red_status() { echo -e "\033[31;1m${*}\033[0m"; }
+
+ssh_service=$(systemctl status ssh | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1 2>/dev/null)
+dropbear_status=$(systemctl status dropbear | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1 2>/dev/null)
+stunnel_service=$(systemctl status stunnel4 | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1 2>/dev/null)
+wstls=$(systemctl status ws-stunnel.service 2>/dev/null | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
+wsdrop=$(systemctl status ws-dropbear.service 2>/dev/null | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
+xray_status=$(systemctl status xray | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
+nginx_status=$(systemctl status nginx | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
+squid_status=$(systemctl status squid | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
+fail2ban_service=$(systemctl status fail2ban | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
+cron_service=$(systemctl status cron | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
+vnstat_service=$(systemctl status vnstat | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
+
+status_color() {
+    [[ "$1" == "running" ]] && green_status "ON" || red_status "OFF"
+}
+
+# ============================================================
+# UNIFIED UI DISPLAY
 # ============================================================
 echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${purple}║${white}     ███╗   ███╗ █████╗ ██████╗  ██████╗███████╗${purple}║${NC}"
@@ -66,168 +89,96 @@ echo -e "${purple}║${white}     ██╔████╔██║████�
 echo -e "${purple}║${white}     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║${purple}║${NC}"
 echo -e "${purple}║${white}     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║${purple}║${NC}"
 echo -e "${purple}║${white}     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝${purple}║${NC}"
-echo -e "${purple}║${cyan}                  • CORE DASHBOARD PANEL •                     ${purple}║${NC}"
+echo -e "${purple}║${cyan}          ════════ Welcome to Autoscript Multiport ════════       ${purple}║${NC}"
 echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Dynamic Environment Diagnostics Table
-echo -e "${cyan} [🖥️] LIVE METRICS & VPS DIAGNOSTICS:${NC}"
-echo -e "${purple}──────────────────────────────────────────────────────────────${NC}"
-printf "  ${white}%-14s${NC} : %-42s\n" "OS Baseline" "$os_name"
-printf "  ${white}%-14s${NC} : %-42s\n" "System Uptime" "$uptime"
-printf "  ${white}%-14s${NC} : %-42s\n" "Public IP" "$MYIP"
-printf "  ${white}%-14s${NC} : %-42s\n" "Active Domain" "$domain"
-printf "  ${white}%-14s${NC} : %-42s\n" "NS: " "$nsdomain"
-printf "  ${white}%-14s${NC} : %-42s\n" "PUBKEY" "$PUBKEY"
-printf "  ${white}%-14s${NC} : %-42s\n" "Memory Capacity" "$uram MB / $tram MB"
-echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# SYSTEM INFO BOX
+echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
+printf "${purple}║${white} %-1s ${blue}%-14s${white} = ${green}%-36s ${purple}║${NC}\n" "●" "SYSTEM OS" "$os_name"
+printf "${purple}║${white} %-1s ${blue}%-14s${white} = ${green}%-36s ${purple}║${NC}\n" "●" "SYSTEM CORE" "$(nproc)"
+printf "${purple}║${white} %-1s ${blue}%-14s${white} = ${green}%-36s ${purple}║${NC}\n" "●" "SERVER RAM" "$uram / $tram MB"
+printf "${purple}║${white} %-1s ${blue}%-14s${white} = ${green}%-36s ${purple}║${NC}\n" "●" "LOADCPU" "$loadcpu"
+printf "${purple}║${white} %-1s ${blue}%-14s${white} = ${green}%-36s ${purple}║${NC}\n" "●" "DATE" "$date_now"
+printf "${purple}║${white} %-1s ${blue}%-14s${white} = ${green}%-36s ${purple}║${NC}\n" "●" "TIME" "$time_now"
+printf "${purple}║${white} %-1s ${blue}%-14s${white} = ${green}%-36s ${purple}║${NC}\n" "●" "UPTIME" "$uptime"
+printf "${purple}║${white} %-1s ${blue}%-14s${white} = ${green}%-36s ${purple}║${NC}\n" "●" "IP VPS" "$MYIP"
+printf "${purple}║${white} %-1s ${blue}%-14s${white} = ${green}%-36s ${purple}║${NC}\n" "●" "DOMAIN" "$domain"
+echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Menu Navigation Routing Selection Nodes
-echo -e " [ ${cyan}01${NC} ] SSH & WebSocket Menu   ${purple}→ Ports: 22, 2222, 8443, 8444, 8445, 8080, 8082${NC}"
-echo -e " [ ${cyan}02${NC} ] Xray Vmess Menu         ${purple}→ Ports: 80, 443${NC}"
-echo -e " [ ${cyan}03${NC} ] Xray Vless Menu         ${purple}→ Ports: 80, 443${NC}"
-echo -e " [ ${cyan}04${NC} ] Xray Trojan Menu        ${purple}→ Ports: 80, 443${NC}"
-echo -e " [ ${cyan}05${NC} ] Xray Shadowsocks Menu   ${purple}→ Ports: 80, 443${NC}"
-echo -e " [ ${cyan}06${NC} ] Server Settings Menu    ${purple}→ Automation & Tweaks${NC}"
-echo -e " [ ${cyan}07${NC} ] Check Services Status   ${purple}→ Engine Diagnostics${NC}"
-echo -e " [ ${cyan}08${NC} ] Flush System RAM Cache  ${purple}→ Free volatile memory${NC}"
-echo -e " [ ${cyan}09${NC} ] Upgrade / Reinstall Core VPN Scripts Engine${NC}"
-echo ""
-echo -e " [ ${red}00${NC} ] ${red}CLOSE CURRENT SESSION (EXIT)${NC}"
-echo ""
-echo -e " Press ${yellow}x${NC} or [ ${yellow}Ctrl+C${NC} ] to Exit"
-echo ""
-echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e " ${cyan}Client :${NC} ${white}$Name${NC} | ${cyan}Expiry :${NC} ${green}$Exp2${NC} | ${cyan}SSL :${NC} ${yellow}$tlsStatus${NC}"
-echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# INFO ACCOUNT SECTION
+echo -e "${purple}═══════════════ ${white}>>> INFORMATION ACCOUNT <<< ${purple}═══════════════${NC}"
+echo -e "${blue}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+printf "${white}%-27s${NC} = ${green}%-12s${NC}\n" "SSH/OPENVPN/UDP" "0"
+printf "${white}%-27s${NC} = ${green}%-12s${NC}\n" "VMESS/WS/GRPC" "0"
+printf "${white}%-27s${NC} = ${green}%-12s${NC}\n" "VLESS/WS/GRPC" "0"
+printf "${white}%-27s${NC} = ${green}%-12s${NC}\n" "TROJAN/WS/GRPC" "0"
+printf "${white}%-27s${NC} = ${green}%-12s${NC}\n" "SHADOW/WS/GRPC" "0"
+echo -e "${blue}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-read -p " Select menu [0-9 or x]: " opt
+# INSTALL LINK
+echo -e "${purple}═══>>> ${white}install via github.com/fahrialimudin ${purple}<<<═══${NC}"
 echo ""
 
+# SERVICE STATUS BOXES (Dynamic from running.sh)
+echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
+printf "${purple}║${green} %-10s${NC} ${green}%-10s${NC} ${green}%-10s${NC} ${green}%-12s${NC} ${purple}║${NC}\n" "SSH" "$(status_color $ssh_service)" "NOOBZVPN" "$(status_color $dropbear_status)" "NGINX" "$(status_color $nginx_status)" "HAPROXY" "$(status_color $stunnel_service)"
+printf "${purple}║${green} %-10s${NC} ${green}%-10s${NC} ${green}%-10s${NC} ${green}%-12s${NC} ${purple}║${NC}\n" "WS-ePro" "$(status_color $wsdrop)" "UDP" "$(status_color $squid_status)" "XRAY" "$(status_color $xray_status)" "DROPBEAR" "$(status_color $dropbear_status)"
+echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+# MENU COLUMNS (21 options arranged in 3 columns)
+echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
+printf "${purple}║${cyan} [01] ${white}SSH MENU${NC}         ${purple}║${cyan} [08] ${white}BCKP/RSTR${NC}       ${purple}║${cyan} [16] ${white}CHANGE DOMAIN${NC}    ${purple}║${NC}\n"
+printf "${purple}║${cyan} [02] ${white}VMESS MENU${NC}       ${purple}║${cyan} [09] ${white}GOTOP X RAM${NC}      ${purple}║${cyan} [17] ${white}FIX CRT DOMAIN${NC}   ${purple}║${NC}\n"
+printf "${purple}║${cyan} [03] ${white}VLESS MENU${NC}       ${purple}║${cyan} [10] ${white}RESTART ALL${NC}     ${purple}║${cyan} [18] ${white}CHANGE BANNER${NC}     ${purple}║${NC}\n"
+printf "${purple}║${cyan} [04] ${white}TROJAN MENU${NC}      ${purple}║${cyan} [11] ${white}COLOUR${NC}           ${purple}║${cyan} [19] ${white}RESTART BANNER${NC}   ${purple}║${NC}\n"
+printf "${purple}║${cyan} [05] ${white}AKUN NOOBZVPN${NC}    ${purple}║${cyan} [12] ${white}UPDATE MENU${NC}      ${purple}║${cyan} [20] ${white}SPEEDTEST${NC}        ${purple}║${NC}\n"
+printf "${purple}║${cyan} [06] ${white}SS - LIBEV${NC}       ${purple}║${cyan} [13] ${white}RUNNING${NC}          ${purple}║${cyan} [21] ${white}EKSTRAK MENU${NC}      ${purple}║${NC}\n"
+printf "${purple}║${cyan} [07] ${white}INSTALL UDP${NC}      ${purple}║${cyan} [14] ${white}INFO PORT${NC}        ${purple}║${white}                       ${purple}║${NC}\n"
+echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+# FOOTER
+echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${purple}║${white} Script Version = ${green}LIFETIME - Fahri Alimudin 082328013583${NC} ${purple}║${NC}"
+echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+# INPUT
+read -p "Options [ 1 - 21 ] >>> " opt
+echo ""
+
+# ============================================================
+# CASE MENU MAPPING (Place your actual script calls here)
+# ============================================================
 case $opt in
-1|01) 
-    clear 
-    m-sshovpn 
-    ;;
-2|02) 
-    clear 
-    m-vmess 
-    ;;
-3|03) 
-    clear 
-    m-vless 
-    ;;
-4|04) 
-    clear 
-    m-trojan 
-    ;;
-5|05) 
-    clear 
-    m-ssws 
-    ;;
-6|06) 
-    clear 
-    m-system 
-    ;;
-7|07) 
-    clear 
-    running 
-    ;;
-8|08) 
-    clear 
-    clearcache 
-    ;;
-9|09) 
-    clear
-    echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${purple}║${yellow}               🔄 UPGRADE CORE ENGINE SYSTEM                  ${purple}║${NC}"
-    echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo -e " This operation will patch/reinstall all underlying architecture:"
-    echo -e "  ${green}✅${NC} Full SSH VPN Scripts suite"
-    echo -e "  ${green}✅${NC} Daemon Protocol WebSockets engines"
-    echo -e "  ${green}✅${NC} Core Xray Engine Configurations Framework"
-    echo -e "  ${green}✅${NC} Interactive Menu Systems Management Layer"
-    echo -e "  ${green}✅${NC} All default proxy endpoints configuration structures"
-    echo ""
-    echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    read -p " Initialize remote upgrade runtime execution? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo ""
-        echo -e " [ ${yellow}⚙️${NC} ] Initiating script ecosystem update matrix..."
-        echo ""
-        
-        # Deploy configuration backup snapshot directory structure safely
-        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        BACKUP_DIR="/root/backup-$TIMESTAMP"
-        echo -e " [ ${cyan}•${NC} ] Structuring filesystem archive layer at: $BACKUP_DIR"
-        mkdir -p "$BACKUP_DIR"
-        cp -r /etc/xray "$BACKUP_DIR/" 2>/dev/null || true
-        cp -r /etc/stunnel "$BACKUP_DIR/" 2>/dev/null || true
-        cp -r /etc/nginx "$BACKUP_DIR/" 2>/dev/null || true
-        cp -r /etc/squid "$BACKUP_DIR/" 2>/dev/null || true
-        cp -f /etc/ssh/sshd_config "$BACKUP_DIR/" 2>/dev/null || true
-        cp -f /root/domain "$BACKUP_DIR/" 2>/dev/null || true
-        cp -f /root/domain.txt "$BACKUP_DIR/" 2>/dev/null || true
-        echo -e " ${green}✓ Backup saved successfully.${NC}"
-        echo ""
-        
-        # Remotely download and verify central upgrade binary
-        echo -e " [ ${cyan}•${NC} ] Contacting remote GitHub distribution repository server..."
-        cd /root
-        wget -q -O update.sh https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/menu/update.sh
-        if [ $? -eq 0 ]; then
-            chmod +x update.sh
-            sed -i -e 's/\r$//' update.sh
-            echo -e " ${green}✓ Modern upgrade component staging completed.${NC}"
-            echo ""
-            echo -e " [ ${yellow}⚙️${NC} ] Launching updates script pipeline..."
-            sleep 1
-            bash update.sh
-        else
-            echo -e " ${red}✗ Central update descriptor download failed!${NC}"
-            echo -e " [ ${yellow}⚙️${NC} ] Activating fallback bootstrap protocol..."
-            
-            # Fallback Routine Sequence Initiation
-            wget -q -O setup.sh https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/setup.sh
-            chmod +x setup.sh
-            sed -i -e 's/\r$//' setup.sh
-            bash setup.sh
-            
-            # Enforce updating interface paths mapping explicitly
-            cd /usr/bin
-            wget -q -O menu https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/menu/menu.sh
-            wget -q -O running https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/menu/running.sh
-            wget -q -O clearcache https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/menu/clearcache.sh
-            chmod +x menu running clearcache
-            sed -i -e 's/\r$//' menu running clearcache
-        fi
-        
-        echo ""
-        echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${green}            🏆 ECOSYSTEM UPGRADE EXECUTED CLEANLY!             ${NC}"
-        echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo ""
-        echo -e " Backup reference archive pointer preserved at: ${yellow}$BACKUP_DIR${NC}"
-        echo ""
-        read -n 1 -s -r -p "Press any key to load fresh menu interface wrapper..."
-        menu
-    else
-        echo -e "\n ${yellow}Upgrade transaction abandoned by client request.${NC}"
-        sleep 1
-        menu
-    fi
-    ;;
-0|00|x|X) 
-    clear 
-    exit 
-    ;;
+1|01) clear; m-sshovpn ;;
+2|02) clear; m-vmess ;;
+3|03) clear; m-vless ;;
+4|04) clear; m-trojan ;;
+5|05) clear; m-ssws ;;
+6|06) clear; m-system ;;
+7|07) clear; m-install-udp ;;
+8|08) clear; bckp-rstr ;;
+9|09) clear; gotop-x-ram ;;
+10) clear; restart-all ;;
+11) clear; colour-menu ;;
+12) clear; update-menu ;;
+13) clear; running ;;  # This calls your running.sh script directly
+14) clear; info-port ;;
+16) clear; change-domain ;;
+17) clear; fix-crt-domain ;;
+18) clear; change-banner ;;
+19) clear; restart-banner ;;
+20) clear; speedtest ;;
+21) clear; ekstrak-menu ;;
 *) 
-    echo -e "${red}✗ Error: Invalid selection entry option!${NC}" 
-    sleep 1 
-    menu 
-    ;;
+   echo -e "${red}✗ Invalid option${NC}" 
+   sleep 1
+   clear
+   bash $0
+   ;;
 esac
