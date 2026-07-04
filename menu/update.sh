@@ -295,6 +295,7 @@ update_xray() {
 }
 
 # Update Menu only
+# Update Menu only
 update_menu() {
     echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
     echo -e "${cyan}              🔄 UPDATING MENU FILES                         ${NC}"
@@ -344,16 +345,19 @@ update_menu() {
     # Update permissions
     chmod +x /usr/local/bin/menu/*.sh
     
-    # Delete old main menu symlink
+    # ✅ FIXED: Create symlink properly
+    # Delete old symlink if it exists
     [ -L "/usr/local/bin/menu" ] && rm -f /usr/local/bin/menu
+    
+    # Delete old menu.sh symlink in /usr/local/bin
     [ -f "/usr/local/bin/menu.sh" ] && rm -f /usr/local/bin/menu.sh
     
-    # Update main menu symlink
+    # Create proper symlink to the menu script
     if [ -f "/usr/local/bin/menu/menu.sh" ]; then
-        ln -sf /usr/local/bin/menu/menu.sh /usr/local/bin/menu
-        chmod +x /usr/local/bin/menu
+        # Create symlink in /usr/local/bin pointing to the script
         ln -sf /usr/local/bin/menu/menu.sh /usr/local/bin/menu.sh
         chmod +x /usr/local/bin/menu.sh
+        success_msg "Created symlink: /usr/local/bin/menu.sh -> /usr/local/bin/menu/menu.sh"
     fi
     
     success_msg "Menu files updated successfully!"
