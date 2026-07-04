@@ -1,9 +1,9 @@
 #!/bin/bash
 # ============================================================
-# MARCSCRIPT VPN INSTALLER v3.1 (Debian 13 Compatible)
+# MARCSCRIPT VPN INSTALLER v3.2 (Ubuntu/Debian Compatible)
 # All-in-One VPN Solution for Debian & Ubuntu
 # ============================================================
-# Version: 3.1 (Fixed PEP 668, Improved Error Handling)
+# Version: 3.2 (Fixed PEP 668, Improved Error Handling)
 # Author: MarcScript
 # ============================================================
 
@@ -37,8 +37,8 @@ show_banner() {
 ║     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║            ║
 ║     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║            ║
 ║     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝            ║
-║         ALL-IN-ONE VPN INSTALLER v3.1                      ║
-║         Debian 13 / Ubuntu Compatible                      ║
+║         ALL-IN-ONE VPN INSTALLER v3.2                      ║
+║         Ubuntu / Debian Compatible                         ║
 ╚══════════════════════════════════════════════════════════════╝
 EOF
     echo ""
@@ -61,6 +61,14 @@ detect_os() {
         log_error "This script only supports Ubuntu or Debian"
         exit 1
     fi
+    
+    # Detect if Debian 13 (trixie) for PEP 668 handling
+    if [[ "$OS" == "debian" ]] && [[ "$VER" == "13" ]] || [[ "$VER" == "trixie" ]]; then
+        readonly DEBIAN_13=true
+        log_info "Debian 13 (trixie) detected - using PEP 668 workaround"
+    else
+        readonly DEBIAN_13=false
+    fi
 }
 
 # ---------- PRE-FLIGHT CHECKS ----------
@@ -78,7 +86,7 @@ pre_flight_checks() {
     fi
     
     # Fix hosts file
-    local localip=$(hostname -I | cut -d\  -f1)
+    local localip=$(hostname -I | awk '{print $1}')
     local hostname=$(hostname)
     if ! grep -q "$hostname" /etc/hosts; then
         echo "$localip $hostname" >> /etc/hosts
@@ -94,12 +102,15 @@ cleanup_services() {
         "nginx" "stunnel4" "dropbear" "fail2ban" "xray"
         "ws-dropbear" "ws-stunnel" "server-sldns-udp" "server-sldns-doh"
         "client-sldns" "dnstt-server" "dnstt-client"
+        "systemd-networkd" "systemd-resolved"  # Network services
     )
     
     # Stop and disable services
     for svc in "${services[@]}"; do
-        systemctl stop "$svc" 2>/dev/null || true
-        systemctl disable "$svc" 2>/dev/null || true
+        if systemctl list-unit-files | grep -q "$svc"; then
+            systemctl stop "$svc" 2>/dev/null || true
+            systemctl disable "$svc" 2>/dev/null || true
+        fi
     done
     
     # Kill processes
@@ -115,14 +126,18 @@ cleanup_services() {
     
     # Remove directories
     local dirs=(
-        "/etc/slowdns" "/etc/dnstt" "/etc/nginx/conf.d/*"
-        "/etc/stunnel/*" "/etc/xray/*" "/etc/v2ray/*"
-        "/var/log/xray/*" "/opt/ws-proxy" "/root/.acme.sh"
+        "/etc/slowdns" "/etc/dnstt" "/etc/nginx/conf.d"
+        "/etc/stunnel" "/etc/xray" "/etc/v2ray"
+        "/var/log/xray" "/opt/ws-proxy" "/root/.acme.sh"
     )
     
     for dir in "${dirs[@]}"; do
         rm -rf "$dir" 2>/dev/null || true
     done
+    
+    # Recreate empty directories with proper permissions
+    mkdir -p /etc/xray /etc/v2ray /etc/stunnel /etc/nginx/conf.d
+    mkdir -p /var/log/xray
     
     # Remove service files
     find /etc/systemd/system/ -name "*sldns*.service" -delete 2>/dev/null || true
@@ -139,8 +154,17 @@ cleanup_services() {
         rm -f "$bin" 2>/dev/null || true
     done
     
+    # Remove menu scripts
+    rm -f /usr/bin/menu /usr/bin/m-* /usr/bin/usernew /usr/bin/trial
+    rm -f /usr/bin/renew /usr/bin/hapus /usr/bin/cek /usr/bin/member
+    rm -f /usr/bin/delete /usr/bin/autokill /usr/bin/ceklim /usr/bin/tendang
+    
     # Clean iptables
     cleanup_iptables
+    
+    # Restart network services
+    systemctl restart systemd-networkd 2>/dev/null || true
+    systemctl restart systemd-resolved 2>/dev/null || true
     
     # Clean package cache
     apt clean 2>/dev/null || true
@@ -151,16 +175,11 @@ cleanup_services() {
 
 # ---------- CLEANUP IPTABLES ----------
 cleanup_iptables() {
-    local rules=(
-        "INPUT -p udp --dport 5300 -j ACCEPT"
-        "INPUT -p tcp --dport 8443 -j ACCEPT"
-        "INPUT -p udp --dport 443 -j ACCEPT"
-        "nat PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300"
-    )
-    
-    for rule in "${rules[@]}"; do
-        iptables -D $rule 2>/dev/null || true
-    done
+    # Remove DNSTT redirect rules
+    iptables -D INPUT -p udp --dport 5300 -j ACCEPT 2>/dev/null || true
+    iptables -D INPUT -p tcp --dport 8443 -j ACCEPT 2>/dev/null || true
+    iptables -D INPUT -p udp --dport 443 -j ACCEPT 2>/dev/null || true
+    iptables -t nat -D PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 2>/dev/null || true
     
     # Save rules
     if command -v netfilter-persistent &> /dev/null; then
@@ -224,36 +243,63 @@ install_dependencies() {
         "net-tools" "dnsutils" "iptables" "iptables-persistent"
         "sudo" "gnutls-bin" "dos2unix" "debconf-utils"
         "ca-certificates" "openssl" "python3-dnslib"
+        "nginx" "stunnel4" "dropbear" "squid"
     )
     
-    apt install -y "${packages[@]}"
+    # Install packages with fallback for missing ones
+    for pkg in "${packages[@]}"; do
+        if ! dpkg -l | grep -q "^ii  $pkg"; then
+            apt install -y "$pkg" 2>/dev/null || {
+                log_warning "Failed to install $pkg (may not be available)"
+            }
+        else
+            log_info "$pkg already installed"
+        fi
+    done
     
     # Python symlink for Debian
     if [[ "$OS" == "debian" ]] && [ ! -f /usr/bin/python ]; then
         ln -sf /usr/bin/python3 /usr/bin/python
     fi
     
-    # Install pip packages with --break-system-packages for Debian 13+
-    # PEP 668 protection workaround
-    if [[ "$OS" == "debian" ]] && [[ "$VER" == "13" ]] || [[ "$VER" == "trixie" ]]; then
-        log_warning "Debian 13 detected - using --break-system-packages flag"
-        pip3 install --upgrade pip --break-system-packages 2>/dev/null || true
-        # dnslib already installed via apt, but ensure it's available
-        if ! python3 -c "import dnslib" 2>/dev/null; then
-            pip3 install dnslib --break-system-packages
-        fi
-    else
-        # Old method for older systems
-        pip3 install --upgrade pip 2>/dev/null || true
-        if ! python3 -c "import dnslib" 2>/dev/null; then
-            pip3 install dnslib
-        fi
-    fi
+    # Install pip packages with proper handling
+    # PEP 668 protection workaround for Debian 13+
+    install_pip_packages
     
     log_success "Dependencies installed"
 }
 
-# ---------- INSTALL COMPONENTS ----------
+# ---------- INSTALL PIP PACKAGES ----------
+install_pip_packages() {
+    # Upgrade pip
+    if [[ "$DEBIAN_13" == true ]]; then
+        python3 -m pip install --upgrade pip --break-system-packages 2>/dev/null || true
+    else
+        python3 -m pip install --upgrade pip 2>/dev/null || true
+    fi
+    
+    # Install required pip packages
+    local pip_packages=("websocket-client" "websockets")
+    
+    for pkg in "${pip_packages[@]}"; do
+        if ! python3 -c "import $pkg" 2>/dev/null; then
+            log_info "Installing Python package: $pkg"
+            if [[ "$DEBIAN_13" == true ]]; then
+                python3 -m pip install "$pkg" --break-system-packages 2>/dev/null || {
+                    log_warning "Failed to install $pkg via pip, trying apt..."
+                    # Try apt fallback for Debian 13
+                    apt install -y "python3-${pkg//-/_}" 2>/dev/null || true
+                }
+            else
+                python3 -m pip install "$pkg" 2>/dev/null || {
+                    log_warning "Failed to install $pkg via pip"
+                }
+            fi
+        fi
+    done
+}
+
+# ---------- INSTALL COMPONENT ----------
 install_component() {
     local name=$1
     local url=$2
@@ -268,7 +314,7 @@ install_component() {
     local success=0
     
     while [ $retry -lt $max_retries ] && [ $success -eq 0 ]; do
-        if wget -q -O "$target" "$url"; then
+        if wget -q --timeout=30 --tries=2 -O "$target" "$url" 2>/dev/null; then
             success=1
         else
             retry=$((retry + 1))
@@ -282,9 +328,11 @@ install_component() {
         return 1
     fi
     
+    # Fix line endings
     sed -i 's/\r$//' "$target"
     chmod +x "$target"
     
+    # Run the script
     if [ -n "$args" ]; then
         bash "$target" "$args"
     else
@@ -369,17 +417,31 @@ select_domain() {
             1)
                 show_banner
                 log_info "Generating random domain..."
-                wget -q -O /root/cf "${CDN}/cf" || {
+                
+                # Use CDN variable
+                local CDN="https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ssh"
+                
+                if ! wget -q -O /root/cf "${CDN}/cf" 2>/dev/null; then
                     log_error "Failed to download Cloudflare script"
                     sleep 2
                     continue
-                }
+                fi
                 chmod +x /root/cf
                 bash /root/cf | tee /root/install.log
                 
+                # Get the generated domain
                 if [ -f /root/domain.txt ]; then
                     previous_domain=$(cat /root/domain.txt | tr -d '[:space:]')
+                elif [ -f /root/domain ]; then
+                    previous_domain=$(cat /root/domain | tr -d '[:space:]')
                 fi
+                
+                if [ -z "$previous_domain" ]; then
+                    log_error "Failed to generate domain"
+                    sleep 2
+                    continue
+                fi
+                
                 echo "$previous_domain"
                 return 0
                 ;;
@@ -428,23 +490,23 @@ EOF
     chmod 644 /root/.profile
     
     # Create log files
-    touch /etc/log-create-ssh.log
-    touch /etc/log-create-vmess.log
-    touch /etc/log-create-vless.log
-    touch /etc/log-create-trojan.log
-    touch /etc/log-create-shadowsocks.log
+    touch /etc/log-create-ssh.log 2>/dev/null || true
+    touch /etc/log-create-vmess.log 2>/dev/null || true
+    touch /etc/log-create-vless.log 2>/dev/null || true
+    touch /etc/log-create-trojan.log 2>/dev/null || true
+    touch /etc/log-create-shadowsocks.log 2>/dev/null || true
     
     # Save version
-    local version=$(curl -sS https://raw.githubusercontent.com/Jhon-mark23/vpn/main/menu/versi 2>/dev/null || echo "3.1")
+    local version=$(curl -sS --connect-timeout 5 https://raw.githubusercontent.com/Jhon-mark23/vpn/main/menu/versi 2>/dev/null || echo "3.2")
     echo "$version" > /opt/.ver
     
     # Save IP
-    curl -sS ipv4.icanhazip.com > /etc/myipvps 2>/dev/null || echo "0.0.0.0" > /etc/myipvps
+    curl -sS --connect-timeout 5 ipv4.icanhazip.com > /etc/myipvps 2>/dev/null || echo "0.0.0.0" > /etc/myipvps
     
     # Clean up
-    rm -f /root/setup.sh /root/ins-xray.sh /root/insshws.sh
-    rm -f /root/ssh-vpn.sh /root/create-cert.sh /root/install-dnstt.sh
-    rm -f /root/cf /root/install.log
+    rm -f /root/setup.sh /root/ins-xray.sh /root/insshws.sh 2>/dev/null || true
+    rm -f /root/ssh-vpn.sh /root/create-cert.sh /root/install-dnstt.sh 2>/dev/null || true
+    rm -f /root/cf /root/install.log 2>/dev/null || true
     
     history -c
 }
@@ -473,6 +535,20 @@ show_complete() {
    create       - Create SSH user
    vpn-status   - Check service status
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  📡 SERVICE PORTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   SSH Direct    : 22, 9696
+   SSH SSL       : 222, 777
+   SSH WS        : 80, 2095
+   SSH WSS       : 443, 700
+   Xray          : 80, 443
+   Squid Proxy   : 3128, 8082, 8888
+   DNSTT (UDP)   : 5300
+   DNSTT (DoH)   : 8443
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EOF
 }
 
@@ -492,6 +568,14 @@ main() {
     # Setup
     readonly CDN="https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ssh"
     local start_time=$(date +%s)
+    
+    # Set timezone
+    ln -fs /usr/share/zoneinfo/Asia/Manila /etc/localtime
+    timedatectl set-timezone Asia/Manila 2>/dev/null || true
+    
+    # Disable IPv6
+    sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
+    sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
     
     # Initial checks
     show_banner
@@ -519,7 +603,7 @@ main() {
     secs_to_human "$(($(date +%s) - start_time))" | tee -a log-install.txt
     
     # Check if xray is running
-    if systemctl is-active --quiet xray.service; then
+    if systemctl is-active --quiet xray.service 2>/dev/null; then
         log_success "Xray service is running successfully!"
     else
         log_warning "Xray service may need manual start. Check with: systemctl status xray"
