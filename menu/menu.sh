@@ -22,7 +22,7 @@ NC='\033[0m'
 # VPS INFORMATION ENGINE
 # ============================================================
 domain=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "None")
-PUBKEY=$(cat "/etc/slowdns/server.pub")
+PUBKEY=$(cat "/etc/slowdns/server.pub" 2>/dev/null || echo "None")
 nsdomain="ns.${domain}"
 
 # SSL Certificate Status Engine
@@ -77,7 +77,7 @@ printf "  ${white}%-14s${NC} : %-42s\n" "OS Baseline" "$os_name"
 printf "  ${white}%-14s${NC} : %-42s\n" "System Uptime" "$uptime"
 printf "  ${white}%-14s${NC} : %-42s\n" "Public IP" "$MYIP"
 printf "  ${white}%-14s${NC} : %-42s\n" "Active Domain" "$domain"
-printf "  ${white}%-14s${NC} : %-42s\n" "NS: " "$nsdomain"
+printf "  ${white}%-14s${NC} : %-42s\n" "NS" "$nsdomain"
 printf "  ${white}%-14s${NC} : %-42s\n" "PUBKEY" "$PUBKEY"
 printf "  ${white}%-14s${NC} : %-42s\n" "Memory Capacity" "$uram MB / $tram MB"
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -85,15 +85,11 @@ echo ""
 
 # Menu Navigation Routing Selection Nodes
 echo -e " [ ${cyan}01${NC} ] SSH & WebSocket Menu"
-echo -e " [ ${cyan}02${NC} ] Xray  Menu"
-echo -e " [ ${cyan}03${NC} ] Xray Vmess Menu"
-echo -e " [ ${cyan}04${NC} ] Xray Vless Menu"
-echo -e " [ ${cyan}05${NC} ] Xray Trojan Menu"
-echo -e " [ ${cyan}06${NC} ] Xray Shadowsocks Menu"
-echo -e " [ ${cyan}07${NC} ] Server Settings Menu"
-echo -e " [ ${cyan}08${NC} ] Check Services Status"
-echo -e " [ ${cyan}09${NC} ] Flush System RAM Cache  ${purple}→ Free volatile memory${NC}"
-echo -e " [ ${cyan}10${NC} ] Upgrade / Reinstall Core VPN Scripts Engine${NC}"
+echo -e " [ ${cyan}02${NC} ] Xray All Protocols Menu"
+echo -e " [ ${cyan}03${NC} ] Server Settings Menu"
+echo -e " [ ${cyan}04${NC} ] Check Services Status"
+echo -e " [ ${cyan}05${NC} ] Flush System RAM Cache  ${purple}→ Free volatile memory${NC}"
+echo -e " [ ${cyan}06${NC} ] Upgrade / Reinstall Core VPN Scripts Engine${NC}"
 echo ""
 echo -e " [ ${red}00${NC} ] ${red}CLOSE CURRENT SESSION (EXIT)${NC}"
 echo ""
@@ -104,7 +100,7 @@ echo -e " ${cyan}Client :${NC} ${white}$Name${NC} | ${cyan}Expiry :${NC} ${green
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-read -p " Select menu [0-10 or x]: " opt
+read -p " Select menu [0-6 or x]: " opt
 echo ""
 
 case $opt in
@@ -118,33 +114,17 @@ case $opt in
     ;;
 3|03) 
     clear 
-    m-vmess 
+    m-system 
     ;;
 4|04) 
     clear 
-    m-vless 
+    running 
     ;;
 5|05) 
     clear 
-    m-trojan 
-    ;;
-6|06) 
-    clear 
-    m-ssws 
-    ;;
-7|07) 
-    clear 
-    m-system 
-    ;;
-8|08) 
-    clear 
-    running 
-    ;;
-9|09) 
-    clear 
     clearcache 
     ;;
-10) 
+6|06) 
     clear
     echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${purple}║${yellow}               🔄 UPGRADE CORE ENGINE SYSTEM                  ${purple}║${NC}"

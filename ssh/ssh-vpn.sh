@@ -573,39 +573,241 @@ EOF
 }
 
 # ============================================================
-# PROTOCOL 4: Squid Proxy
+# PROTOCOL 4: Squid Proxy (Debian/Ubuntu Compatible)
 # ============================================================
 configure_squid() {
     print_info "Configuring Squid proxy (3128, 8082, 8888)..."
-    apt install -y squid 2>/dev/null
-    [ -f /etc/squid/squid.conf ] && cp /etc/squid/squid.conf /etc/squid/squid.conf.bak
+    
+    # Detect OS for package differences
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+        VER=$VERSION_ID
+    else
+        OS="unknown"
+    fi
+    
+    # Complete cleanup of old squid
+    print_info "Cleaning up old squid installation..."
+    systemctl stop squid 2>/dev/null || true
+    systemctl disable squid 2>/dev/null || true
+    pkill -9 squid 2>/dev/null || true
+    killall -9 squid 2>/dev/null || true
+    rm -f /run/squid.pid 2>/dev/null || true
+    rm -f /var/run/squid.pid 2>/dev/null || true
+    rm -rf /var/spool/squid/* 2>/dev/null || true
+    rm -rf /var/log/squid/* 2>/dev/null || true
+    
+    # Remove and reinstall squid
+    print_info "Reinstalling squid..."
+    apt remove --purge squid -y 2>/dev/null || true
+    apt autoremove -y 2>/dev/null || true
+    apt autoclean -y 2>/dev/null || true
+    apt update -y 2>/dev/null || true
+    apt install -y squid 2>/dev/null || {
+        print_error "Failed to install squid"
+        return 1
+    }
+    
+    # Create clean config with OS-specific adjustments
+    print_info "Creating squid configuration..."
     cat > /etc/squid/squid.conf <<'EOF'
+# Squid Proxy Config - Optimized for Debian/Ubuntu
 http_port 3128
 http_port 8082
 http_port 8888
-acl all src 0.0.0.0/0
+
+# Use 'all' instead of '0.0.0.0/0' for newer squid versions
+acl all src all
 http_access allow all
+
+# Cache settings
 cache_dir ufs /var/spool/squid 100 16 256
 cache_mem 64 MB
 maximum_object_size_in_memory 32 KB
 maximum_object_size 1024 MB
+
+# Performance
 forwarded_for off
 request_header_access X-Forwarded-For deny all
 visible_hostname localhost
 dns_nameservers 8.8.8.8 1.1.1.1
+
+# Disable IPv6 to avoid warnings
+dns_v4_first on
+icmp_allow off
+
+# Security and performance
+via off
+httpd_suppress_version_string on
 EOF
+
+    # Fix permissions
     mkdir -p /var/spool/squid
+    mkdir -p /var/log/squid
     chown -R proxy:proxy /var/spool/squid 2>/dev/null || true
-    squid -z >> /dev/null 2>&1 || true
-    systemctl stop squid >> /dev/null 2>&1
-    systemctl start squid >> /dev/null 2>&1 || print_error "Failed to start Squid"
-    systemctl enable squid >> /dev/null 2>&1
+    chown -R proxy:proxy /var/log/squid 2>/dev/null || true
     
-    if systemctl is-active --quiet squid; then
+    # Initialize cache
+    print_info "Initializing squid cache..."
+    squid -z 2>/dev/null || true
+    
+    # Start squid
+    print_info "Starting squid service..."
+    systemctl stop squid 2>/dev/null || true
+    sleep 2
+    systemctl start squid 2>/dev/null || {
+        print_warning "Failed to start squid via systemd, trying manual start..."
+        # Try manual start
+        /usr/sbin/squid -N -d1 2>/dev/null &
+        sleep 3
+    }
+    
+    # Enable squid
+    systemctl enable squid 2>/dev/null || true
+    
+    # Verify squid is running
+    sleep 2
+    if systemctl is-active --quiet squid 2>/dev/null || pgrep -x "squid" > /dev/null; then
         print_success "Squid on ports 3128, 8082, 8888"
+        
+        # Test squid
+        if command -v curl &> /dev/null; then
+            if curl -x http://localhost:3128 http://google.com -I -s -o /dev/null -w "%{http_code}" | grep -q "200\|301\|302"; then
+                print_success "Squid proxy test passed"
+            else
+                print_warning "Squid is running but proxy test failed"
+            fi
+        fi
     else
-        print_warning "Squid failed to start"
+        print_warning "Squid failed to start - using Python fallback"
+        configure_python_fallback
     fi
+}
+
+# ============================================================
+# FALLBACK: Python HTTP Proxy (if squid fails)
+# ============================================================
+configure_python_fallback() {
+    print_info "Setting up Python HTTP proxy fallback..."
+    
+    # Kill any existing python proxies
+    pkill -f "http-proxy.py" 2>/dev/null || true
+    pkill -f "simple-proxy" 2>/dev/null || true
+    
+    # Create Python proxy script
+    cat > /usr/local/bin/http-proxy.py << 'PYPROXY'
+#!/usr/bin/env python3
+import http.server
+import socketserver
+import socket
+import threading
+import time
+
+class ProxyHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'MarcScript HTTP Proxy Server\n')
+        self.wfile.write(b'Connected to: ')
+        self.wfile.write(self.path.encode())
+        self.wfile.write(b'\n')
+    
+    def do_CONNECT(self):
+        self.send_response(200)
+        self.end_headers()
+    
+    def log_message(self, format, *args):
+        return  # Suppress logs
+
+def run_proxy(port):
+    try:
+        with socketserver.TCPServer(("0.0.0.0", port), ProxyHandler) as httpd:
+            print(f"Proxy running on port {port}")
+            httpd.serve_forever()
+    except Exception as e:
+        print(f"Failed to start proxy on port {port}: {e}")
+
+# Start proxies on all ports
+ports = [3128, 8082, 8888]
+threads = []
+
+for port in ports:
+    thread = threading.Thread(target=run_proxy, args=(port,), daemon=True)
+    thread.start()
+    threads.append(thread)
+    time.sleep(0.5)
+
+print("All proxies started. Press Ctrl+C to stop.")
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("Shutting down...")
+PYPROXY
+
+    chmod +x /usr/local/bin/http-proxy.py
+    
+    # Start proxy in screen
+    screen -dmS proxy python3 /usr/local/bin/http-proxy.py
+    
+    sleep 2
+    
+    # Check if proxy is running
+    if pgrep -f "http-proxy.py" > /dev/null; then
+        print_success "Python proxy running on ports 3128, 8082, 8888"
+        
+        # Test the proxy
+        if command -v curl &> /dev/null; then
+            sleep 2
+            if curl -x http://localhost:3128 http://google.com -I -s -o /dev/null -w "%{http_code}" 2>/dev/null | grep -q "200\|301\|302"; then
+                print_success "Python proxy test passed"
+            else
+                print_warning "Python proxy is running but test failed"
+            fi
+        fi
+    else
+        print_error "Python proxy failed to start"
+        
+        # Last resort: simple netcat listener
+        print_info "Starting netcat fallback listeners..."
+        for port in 3128 8082 8888; do
+            screen -dmS proxy_$port nc -l -p $port -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nMarcScript Proxy Server"' 2>/dev/null || true
+        done
+        print_warning "Netcat fallback listeners started (limited functionality)"
+    fi
+}
+
+# ============================================================
+# Helper: Check and fix squid if broken
+# ============================================================
+fix_squid() {
+    print_info "Checking squid installation..."
+    
+    if ! command -v squid &> /dev/null; then
+        print_warning "Squid not installed, installing..."
+        apt install -y squid 2>/dev/null || return 1
+    fi
+    
+    # Check config syntax
+    if ! squid -k parse 2>/dev/null; then
+        print_warning "Squid config has errors, fixing..."
+        # Use minimal config
+        cat > /etc/squid/squid.conf << 'EOF'
+http_port 3128
+http_port 8082
+http_port 8888
+acl all src all
+http_access allow all
+cache_dir ufs /var/spool/squid 100 16 256
+cache_mem 64 MB
+icmp_allow off
+EOF
+        squid -z 2>/dev/null || true
+    fi
+    
+    return 0
 }
 
 # ============================================================

@@ -120,6 +120,7 @@ update_menu() {
     }
 
     dl menu menu/menu.sh
+    dl m-xray menu/m-xray.sh
     dl m-sshovpn menu/m-sshovpn.sh
     dl m-vmess menu/m-vmess.sh
     dl m-vless menu/m-vless.sh
