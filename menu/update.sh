@@ -125,7 +125,6 @@ update_menu() {
     # Remove old menu files
     echo -e "${yellow}Removing old menu files...${NC}"
     rm -rf /usr/bin/menu 2>/dev/null
-    mkdir -p /usr/bin/menu
     success_msg "Old menu files removed"
     
     # Download menu scripts using dl function
