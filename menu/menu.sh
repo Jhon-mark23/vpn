@@ -104,7 +104,7 @@ echo -e " ${cyan}Client :${NC} ${white}$Name${NC} | ${cyan}Expiry :${NC} ${green
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-read -p " Select menu [0-9 or x]: " opt
+read -p " Select menu [0-10 or x]: " opt
 echo ""
 
 case $opt in
