@@ -84,15 +84,16 @@ echo -e "${purple}━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Menu Navigation Routing Selection Nodes
-echo -e " [ ${cyan}01${NC} ] SSH & WebSocket Menu   ${purple}→ Ports: 22, 2222, 8443, 8444, 8445, 8080, 8082${NC}"
-echo -e " [ ${cyan}02${NC} ] Xray Vmess Menu         ${purple}→ Ports: 80, 443${NC}"
-echo -e " [ ${cyan}03${NC} ] Xray Vless Menu         ${purple}→ Ports: 80, 443${NC}"
-echo -e " [ ${cyan}04${NC} ] Xray Trojan Menu        ${purple}→ Ports: 80, 443${NC}"
-echo -e " [ ${cyan}05${NC} ] Xray Shadowsocks Menu   ${purple}→ Ports: 80, 443${NC}"
-echo -e " [ ${cyan}06${NC} ] Server Settings Menu    ${purple}→ Automation & Tweaks${NC}"
-echo -e " [ ${cyan}07${NC} ] Check Services Status   ${purple}→ Engine Diagnostics${NC}"
-echo -e " [ ${cyan}08${NC} ] Flush System RAM Cache  ${purple}→ Free volatile memory${NC}"
-echo -e " [ ${cyan}09${NC} ] Upgrade / Reinstall Core VPN Scripts Engine${NC}"
+echo -e " [ ${cyan}01${NC} ] SSH & WebSocket Menu"
+echo -e " [ ${cyan}02${NC} ] Xray Vmess Menu"
+echo -e " [ ${cyan}03${NC} ] Xray Menu"
+echo -e " [ ${cyan}04${NC} ] Xray Vless Menu"
+echo -e " [ ${cyan}05${NC} ] Xray Trojan Menu"
+echo -e " [ ${cyan}06${NC} ] Xray Shadowsocks Menu"
+echo -e " [ ${cyan}07${NC} ] Server Settings Menu"
+echo -e " [ ${cyan}08${NC} ] Check Services Status"
+echo -e " [ ${cyan}09${NC} ] Flush System RAM Cache  ${purple}→ Free volatile memory${NC}"
+echo -e " [ ${cyan}10${NC} ] Upgrade / Reinstall Core VPN Scripts Engine${NC}"
 echo ""
 echo -e " [ ${red}00${NC} ] ${red}CLOSE CURRENT SESSION (EXIT)${NC}"
 echo ""
@@ -113,33 +114,37 @@ case $opt in
     ;;
 2|02) 
     clear 
-    m-vmess 
+    m-xray 
     ;;
 3|03) 
     clear 
-    m-vless 
+    m-vmess 
     ;;
 4|04) 
     clear 
-    m-trojan 
+    m-vless 
     ;;
 5|05) 
     clear 
-    m-ssws 
+    m-trojan 
     ;;
 6|06) 
     clear 
-    m-system 
+    m-ssws 
     ;;
 7|07) 
     clear 
-    running 
+    m-system 
     ;;
 8|08) 
     clear 
-    clearcache 
+    running 
     ;;
 9|09) 
+    clear 
+    clearcache 
+    ;;
+10) 
     clear
     echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${purple}║${yellow}               🔄 UPGRADE CORE ENGINE SYSTEM                  ${purple}║${NC}"

@@ -27,6 +27,7 @@ done
 
 # Scraping active service configurations
 IP=$(wget -qO- ipv4.icanhazip.com || curl -sS ifconfig.me)
+domain=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "None")
 opensh="22"
 portsshws="8080"
 wsssl="8445"
@@ -97,7 +98,7 @@ echo -e "${purple}━━━━━━━━━━━━━━━━━━━━�
 echo -e "${yellow}⚙️ HTTP CUSTOM / HTTP INJECTOR WEBSOCKET PAYLOADS${NC}"
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${cyan}■ Http Cutom"
-echo -e "${IP}:22@${Login}:${Pass}
+echo -e "${IP}:22@${Login}:${Pass}"
 echo -e "${cyan}■ Change the port if you want o connect other protocol"
 echo -e ""
 echo -e "${cyan}■ TLS / WSS Payload:${NC}"
