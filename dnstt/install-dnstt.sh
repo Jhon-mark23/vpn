@@ -447,11 +447,12 @@ main() {
     echo -e "  SSH: $SSH_PORT, $DNSTT_ALT_SSH"
     echo ""
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    read -p "Continue? (y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 0
-    fi
+    sleep 2
+  #  read -p "Continue? (y/n): " -n 1 -r
+  #  echo
+  #  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  #      exit 0
+  #   fi
     
     detect_os
     detect_arch

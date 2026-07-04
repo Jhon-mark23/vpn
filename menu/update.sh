@@ -1,325 +1,622 @@
 #!/bin/bash
 # ============================================================
-# MARCSCRIPT UPDATE/REINSTALL SCRIPT
-# Located at: menu/update.sh
+# MARCSCRIPT VPN SYSTEM - UPDATE MANAGER
 # ============================================================
 
-# Colors
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-WHITE='\033[1;37m'
+clear
+
+# ---------- COLOURS ----------
+purple='\033[0;35m'
+blue='\033[0;34m'
+green='\033[0;32m'
+cyan='\033[1;36m'
+yellow='\033[1;33m'
+red='\033[1;31m'
+white='\033[1;37m'
 NC='\033[0m'
 
-print_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
-print_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
-print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-print_success(){ echo -e "${BLUE}[SUCCESS]${NC} $1"; }
+# ---------- CONFIGURATION ----------
+REPO_URL="https://raw.githubusercontent.com/yourusername/marcscript/main"  # CHANGE THIS
+BACKUP_DIR="/root/backup_$(date +%Y%m%d_%H%M%S)"
+LOG_FILE="/var/log/marcscript-update.log"
+INSTALL_DIR="/usr/local/marcscript"
 
-# ============================================================
-# CHECK ROOT
-# ============================================================
-if [ "$EUID" -ne 0 ]; then
-    print_error "Please run as root"
+# ---------- FUNCTIONS ----------
+
+# Logging function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+# Error handler
+error_exit() {
+    echo -e "${red}✗ ERROR: $1${NC}"
+    log "ERROR: $1"
     exit 1
-fi
+}
 
-# ============================================================
-# CREATE BACKUP
-# ============================================================
+# Success message
+success_msg() {
+    echo -e "${green}✓ $1${NC}"
+    log "SUCCESS: $1"
+}
+
+# Warning message
+warning_msg() {
+    echo -e "${yellow}⚠ $1${NC}"
+    log "WARNING: $1"
+}
+
+# Create backup
 create_backup() {
-    BACKUP_DIR="/root/backup-$(date +%Y%m%d_%H%M%S)"
+    echo -e "${yellow}Creating backup...${NC}"
     mkdir -p "$BACKUP_DIR"
     
-    print_info "Creating backup in $BACKUP_DIR..."
+    # Backup important directories
+    [ -d "/etc/xray" ] && cp -r /etc/xray "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/etc/v2ray" ] && cp -r /etc/v2ray "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/etc/ssh" ] && cp -r /etc/ssh "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/etc/dropbear" ] && cp -r /etc/dropbear "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/etc/nginx" ] && cp -r /etc/nginx "$BACKUP_DIR/" 2>/dev/null
+    [ -f "/etc/passwd" ] && cp /etc/passwd "$BACKUP_DIR/" 2>/dev/null
+    [ -f "/etc/shadow" ] && cp /etc/shadow "$BACKUP_DIR/" 2>/dev/null
+    [ -f "/root/domain.txt" ] && cp /root/domain.txt "$BACKUP_DIR/" 2>/dev/null
     
-    # Backup configs
-    [ -d /etc/xray ] && cp -r /etc/xray "$BACKUP_DIR/" 2>/dev/null
-    [ -d /etc/stunnel ] && cp -r /etc/stunnel "$BACKUP_DIR/" 2>/dev/null
-    [ -d /etc/nginx ] && cp -r /etc/nginx "$BACKUP_DIR/" 2>/dev/null
-    [ -d /etc/squid ] && cp -r /etc/squid "$BACKUP_DIR/" 2>/dev/null
-    [ -f /etc/ssh/sshd_config ] && cp /etc/ssh/sshd_config "$BACKUP_DIR/" 2>/dev/null
-    [ -f /root/domain ] && cp /root/domain "$BACKUP_DIR/" 2>/dev/null
-    [ -f /etc/xray/domain ] && cp /etc/xray/domain "$BACKUP_DIR/" 2>/dev/null
-    [ -f /etc/passwd ] && cp /etc/passwd "$BACKUP_DIR/" 2>/dev/null
-    [ -f /etc/shadow ] && cp /etc/shadow "$BACKUP_DIR/" 2>/dev/null
+    # Backup all scripts
+    [ -d "/usr/local/bin/ssh" ] && cp -r /usr/local/bin/ssh "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/usr/local/bin/xray" ] && cp -r /usr/local/bin/xray "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/usr/local/bin/menu" ] && cp -r /usr/local/bin/menu "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/usr/local/bin/dnstt" ] && cp -r /usr/local/bin/dnstt "$BACKUP_DIR/" 2>/dev/null
+    [ -d "/usr/local/bin/sshws" ] && cp -r /usr/local/bin/sshws "$BACKUP_DIR/" 2>/dev/null
     
-    print_success "Backup completed at $BACKUP_DIR"
+    success_msg "Backup created at: $BACKUP_DIR"
 }
 
-# ============================================================
-# DOWNLOAD AND RUN SETUP
-# ============================================================
-run_full_setup() {
-    print_info "Downloading latest setup script..."
-    cd /root
+# Download file with progress
+download_file() {
+    local url="$1"
+    local dest="$2"
+    local filename=$(basename "$dest")
     
-    # Remove old setup
-    rm -f setup.sh
-    
-    # Download new setup
-    wget -q -O setup.sh https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/setup.sh
-    if [ $? -ne 0 ]; then
-        print_error "Failed to download setup.sh"
+    echo -e "${cyan}Downloading: $filename${NC}"
+    wget -q --show-progress -O "$dest" "$url" || {
+        echo -e "${red}✗ Failed to download: $filename${NC}"
         return 1
+    }
+    chmod +x "$dest" 2>/dev/null
+    success_msg "Installed: $filename"
+    return 0
+}
+
+# Delete old files before installation
+delete_old_files() {
+    local target_dir="$1"
+    local pattern="$2"
+    
+    if [ -d "$target_dir" ]; then
+        echo -e "${yellow}Removing old files from: $target_dir${NC}"
+        if [ -n "$pattern" ]; then
+            # Delete specific pattern
+            find "$target_dir" -name "$pattern" -type f -delete 2>/dev/null
+        else
+            # Delete all files in directory
+            rm -rf "$target_dir"/* 2>/dev/null
+        fi
+        success_msg "Old files removed from: $target_dir"
+    else
+        mkdir -p "$target_dir"
+        success_msg "Created directory: $target_dir"
+    fi
+}
+
+# Update ALL services
+update_all() {
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${cyan}         🔄 UPDATING ALL SERVICES & MENU FILES               ${NC}"
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    
+    # Confirm update
+    read -p "This will update ALL services. Continue? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${yellow}Update cancelled.${NC}"
+        return
     fi
     
-    chmod +x setup.sh
-    sed -i -e 's/\r$//' setup.sh
+    create_backup
     
-    print_info "Running setup script..."
-    bash setup.sh
-    return $?
+    # Update each component
+    update_ssh
+    update_xray
+    update_menu
+    update_dnstt
+    update_sshws
+    update_main_scripts
+    
+    # Restart services
+    echo -e "${cyan}Restarting services...${NC}"
+    systemctl restart xray 2>/dev/null || systemctl restart v2ray 2>/dev/null
+    systemctl restart ssh 2>/dev/null
+    systemctl restart dropbear 2>/dev/null
+    systemctl restart ws-dropbear 2>/dev/null
+    systemctl restart ws-stunnel 2>/dev/null
+    systemctl restart nginx 2>/dev/null
+    
+    success_msg "All services updated successfully!"
+    echo ""
 }
 
-# ============================================================
-# UPDATE MENU FILES ONLY
-# ============================================================
-update_menu() {
-    print_info "Updating menu scripts only..."
+# Update main scripts
+update_main_scripts() {
+    echo -e "${cyan}Updating main scripts...${NC}"
+    mkdir -p /usr/local/bin
     
-    GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
-    cd /usr/bin
+    # Delete old main scripts
+    local main_scripts=("setup.sh" "setup-ssh.sh" "create-cert.sh" "push.sh")
+    for script in "${main_scripts[@]}"; do
+        [ -f "/usr/local/bin/$script" ] && rm -f "/usr/local/bin/$script"
+    done
     
-    # Menu scripts
-    wget -q -O menu "$GHBASE/menu/menu.sh"
-    wget -q -O running "$GHBASE/menu/running.sh"
-    wget -q -O clearcache "$GHBASE/menu/clearcache.sh"
-    wget -q -O m-system "$GHBASE/menu/m-system.sh"
-    wget -q -O m-domain "$GHBASE/menu/m-domain.sh"
-    wget -q -O m-dns "$GHBASE/menu/m-dns.sh"
-    wget -q -O m-tcp "$GHBASE/menu/tcp.sh"
-    wget -q -O auto-reboot "$GHBASE/menu/auto-reboot.sh"
-    wget -q -O restart "$GHBASE/menu/restart.sh"
-    wget -q -O bw "$GHBASE/menu/bw.sh"
-    wget -q -O m-vmess "$GHBASE/menu/m-vmess.sh"
-    wget -q -O m-vless "$GHBASE/menu/m-vless.sh"
-    wget -q -O m-trojan "$GHBASE/menu/m-trojan.sh"
-    wget -q -O m-ssws "$GHBASE/menu/m-ssws.sh"
-    wget -q -O m-sshovpn "$GHBASE/menu/m-sshovpn.sh"
-    wget -q -O m-webmin "$GHBASE/menu/m-webmin.sh"
-    wget -q -O m-xray "$GHBASE/menu/m-xray.sh"
-    wget -q -O update "$GHBASE/menu/update.sh"
-    
-    chmod +x menu running clearcache m-system m-domain m-dns m-tcp auto-reboot restart bw
-    chmod +x m-vmess m-vless m-trojan m-ssws m-sshovpn m-webmin m-xray update
-    
-    print_success "Menu scripts updated (18 scripts)"
+    # Download new main scripts
+    download_file "$REPO_URL/setup.sh" "/usr/local/bin/setup.sh"
+    download_file "$REPO_URL/setup-ssh.sh" "/usr/local/bin/setup-ssh.sh"
+    download_file "$REPO_URL/create-cert.sh" "/usr/local/bin/create-cert.sh"
+    download_file "$REPO_URL/push.sh" "/usr/local/bin/push.sh"
 }
 
-# ============================================================
-# UPDATE SSH FILES ONLY
-# ============================================================
+# Update SSH only
 update_ssh() {
-    print_info "Updating SSH scripts only..."
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${cyan}              🔄 UPDATING SSH SERVICES                        ${NC}"
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo ""
     
-    GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
-    cd /usr/bin
+    # Confirm update
+    read -p "This will update SSH services. Continue? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${yellow}Update cancelled.${NC}"
+        return
+    fi
     
-    # SSH scripts
-    wget -q -O usernew "$GHBASE/ssh/usernew.sh"
-    wget -q -O trial "$GHBASE/ssh/trial.sh"
-    wget -q -O renew "$GHBASE/ssh/renew.sh"
-    wget -q -O hapus "$GHBASE/ssh/hapus.sh"
-    wget -q -O cek "$GHBASE/ssh/cek.sh"
-    wget -q -O member "$GHBASE/ssh/member.sh"
-    wget -q -O delete "$GHBASE/ssh/delete.sh"
-    wget -q -O autokill "$GHBASE/ssh/autokill.sh"
-    wget -q -O ceklim "$GHBASE/ssh/ceklim.sh"
-    wget -q -O tendang "$GHBASE/ssh/tendang.sh"
-    wget -q -O add-host "$GHBASE/ssh/add-host.sh"
-    wget -q -O xp "$GHBASE/ssh/xp.sh"
-    wget -q -O fix-cek "$GHBASE/ssh/fix-cek.sh"
-    wget -q -O speedtest "$GHBASE/ssh/speedtest_cli.py"
-    wget -q -O ssh-vpn "$GHBASE/ssh/ssh-vpn.sh"
-    wget -q -O newudpgw "$GHBASE/ssh/newudpgw"
+    create_backup
     
-    # SSHWS files (if separate directory)
-    wget -q -O insshws "$GHBASE/sshws/insshws.sh" 2>/dev/null
-    wget -q -O socks-ssh "$GHBASE/sshws/socks-ssh.py" 2>/dev/null
+    # Delete old SSH files
+    delete_old_files "/usr/local/bin/ssh" "*.sh"
+    delete_old_files "/usr/local/bin/ssh" "*.py"
+    delete_old_files "/usr/local/bin/ssh" "*.js"
     
-    chmod +x usernew trial renew hapus cek member delete autokill ceklim tendang add-host xp fix-cek speedtest ssh-vpn newudpgw
-    chmod +x insshws socks-ssh 2>/dev/null
+    # Download SSH scripts
+    local ssh_files=(
+        "usernew.sh"
+        "trial.sh"
+        "delete.sh"
+        "hapus.sh"
+        "renew.sh"
+        "cek.sh"
+        "ceklim.sh"
+        "member.sh"
+        "xp.sh"
+        "autokill.sh"
+        "tendang.sh"
+        "add-host.sh"
+        "password"
+        "newudpgw"
+        "ssh-vpn.sh"
+        "fix-cek.sh"
+    )
     
-    print_success "SSH scripts updated (17 scripts)"
+    for file in "${ssh_files[@]}"; do
+        download_file "$REPO_URL/ssh/$file" "/usr/local/bin/ssh/$file"
+    done
+    
+    # Download utilities
+    download_file "$REPO_URL/ssh/speedtest_cli.py" "/usr/local/bin/speedtest_cli.py"
+    download_file "$REPO_URL/ssh/nginx.conf" "/etc/nginx/nginx.conf"
+    download_file "$REPO_URL/ssh/proxy3.js" "/usr/local/bin/proxy3.js"
+    download_file "$REPO_URL/ssh/cf" "/usr/local/bin/cf"
+    
+    # Update permissions
+    chmod +x /usr/local/bin/ssh/*.sh 2>/dev/null
+    chmod +x /usr/local/bin/ssh/*.py 2>/dev/null
+    chmod +x /usr/local/bin/ssh/* 2>/dev/null
+    
+    # Restart SSH services
+    systemctl restart ssh
+    systemctl restart dropbear
+    
+    success_msg "SSH services updated successfully!"
+    echo ""
 }
 
-# ============================================================
-# UPDATE XRAY FILES ONLY
-# ============================================================
+# Update Xray only
 update_xray() {
-    print_info "Updating Xray scripts only..."
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${cyan}              🔄 UPDATING XRAY SERVICES                      ${NC}"
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo ""
     
-    GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
-    cd /usr/bin
+    # Confirm update
+    read -p "This will update Xray services. Continue? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${yellow}Update cancelled.${NC}"
+        return
+    fi
     
-    # VMess/WS scripts
-    wget -q -O add-ws "$GHBASE/xray/add-ws.sh"
-    wget -q -O trialvmess "$GHBASE/xray/trialvmess.sh"
-    wget -q -O renew-ws "$GHBASE/xray/renew-ws.sh"
-    wget -q -O del-ws "$GHBASE/xray/del-ws.sh"
-    wget -q -O cek-ws "$GHBASE/xray/cek-ws.sh"
+    create_backup
     
-    # VLess scripts
-    wget -q -O add-vless "$GHBASE/xray/add-vless.sh"
-    wget -q -O trialvless "$GHBASE/xray/trialvless.sh"
-    wget -q -O renew-vless "$GHBASE/xray/renew-vless.sh"
-    wget -q -O del-vless "$GHBASE/xray/del-vless.sh"
-    wget -q -O cek-vless "$GHBASE/xray/cek-vless.sh"
+    # Delete old Xray files
+    delete_old_files "/usr/local/bin/xray" "*.sh"
     
-    # Trojan scripts
-    wget -q -O add-tr "$GHBASE/xray/add-tr.sh"
-    wget -q -O trialtrojan "$GHBASE/xray/trialtrojan.sh"
-    wget -q -O renew-tr "$GHBASE/xray/renew-tr.sh"
-    wget -q -O del-tr "$GHBASE/xray/del-tr.sh"
-    wget -q -O cek-tr "$GHBASE/xray/cek-tr.sh"
+    # Download Xray scripts
+    local xray_files=(
+        "ins-xray.sh"
+        "add-ws.sh"
+        "add-vless.sh"
+        "add-tr.sh"
+        "add-ssws.sh"
+        "del-ws.sh"
+        "del-vless.sh"
+        "del-tr.sh"
+        "del-ssws.sh"
+        "renew-ws.sh"
+        "renew-vless.sh"
+        "renew-tr.sh"
+        "renew-ssws.sh"
+        "cek-ws.sh"
+        "cek-vless.sh"
+        "cek-tr.sh"
+        "cek-ssws.sh"
+        "trialvmess.sh"
+        "trialvless.sh"
+        "trialtrojan.sh"
+        "trialssws.sh"
+        "certv2ray.sh"
+    )
     
-    # Shadowsocks scripts
-    wget -q -O add-ssws "$GHBASE/xray/add-ssws.sh"
-    wget -q -O trialssws "$GHBASE/xray/trialssws.sh"
-    wget -q -O renew-ssws "$GHBASE/xray/renew-ssws.sh"
-    wget -q -O del-ssws "$GHBASE/xray/del-ssws.sh"
-    wget -q -O cek-ssws "$GHBASE/xray/cek-ssws.sh"
+    for file in "${xray_files[@]}"; do
+        download_file "$REPO_URL/xray/$file" "/usr/local/bin/xray/$file"
+    done
     
-    # Certificate script
-    wget -q -O certv2ray "$GHBASE/xray/certv2ray.sh"
-    wget -q -O ins-xray "$GHBASE/xray/ins-xray.sh"
+    # Update permissions
+    chmod +x /usr/local/bin/xray/*.sh
     
-    chmod +x add-ws trialvmess renew-ws del-ws cek-ws
-    chmod +x add-vless trialvless renew-vless del-vless cek-vless
-    chmod +x add-tr trialtrojan renew-tr del-tr cek-tr
-    chmod +x add-ssws trialssws renew-ssws del-ssws cek-ssws
-    chmod +x certv2ray ins-xray
+    # Update Xray core if needed
+    if command -v xray &> /dev/null; then
+        echo -e "${cyan}Checking Xray core version...${NC}"
+        bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+        success_msg "Xray core updated"
+    fi
     
-    print_success "Xray scripts updated (22 scripts)"
+    # Restart Xray
+    systemctl restart xray 2>/dev/null || systemctl restart v2ray 2>/dev/null
+    
+    success_msg "Xray services updated successfully!"
+    echo ""
 }
 
-# ============================================================
-# SHOW SUMMARY
-# ============================================================
-show_summary() {
-    local update_type="$1"
-    local backup_loc="$2"
-    
-    clear
-    echo ""
-    echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${PURPLE}║${GREEN}                  ✅ UPDATE COMPLETED!                     ${PURPLE}║${NC}"
-    echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${WHITE}                   📋 UPDATE SUMMARY${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# Update Menu only
+update_menu() {
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${cyan}              🔄 UPDATING MENU FILES                         ${NC}"
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    case "$update_type" in
-        "1")
-            echo -e "${GREEN}  ✅ Full System Update     : Complete${NC}"
-            echo -e "${GREEN}  ✅ Setup Script           : Updated${NC}"
-            echo -e "${GREEN}  ✅ Menu Scripts           : Updated (18 scripts)${NC}"
-            echo -e "${GREEN}  ✅ SSH Scripts            : Updated (17 scripts)${NC}"
-            echo -e "${GREEN}  ✅ Xray Scripts           : Updated (22 scripts)${NC}"
+    # Confirm update
+    read -p "This will update Menu files. Continue? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${yellow}Update cancelled.${NC}"
+        return
+    fi
+    
+    create_backup
+    
+    # Delete old menu files
+    delete_old_files "/usr/local/bin/menu" "*.sh"
+    [ -f "/usr/local/bin/menu/versi" ] && rm -f "/usr/local/bin/menu/versi"
+    
+    # Download menu scripts
+    local menu_files=(
+        "menu.sh"
+        "m-sshovpn.sh"
+        "m-ssws.sh"
+        "m-vmess.sh"
+        "m-vless.sh"
+        "m-trojan.sh"
+        "m-xray.sh"
+        "m-system.sh"
+        "m-domain.sh"
+        "m-dns.sh"
+        "m-webmin.sh"
+        "auto-reboot.sh"
+        "restart.sh"
+        "running.sh"
+        "bw.sh"
+        "clearcache.sh"
+        "update.sh"
+        "tcp.sh"
+        "versi"
+    )
+    
+    for file in "${menu_files[@]}"; do
+        download_file "$REPO_URL/menu/$file" "/usr/local/bin/menu/$file"
+    done
+    
+    # Update permissions
+    chmod +x /usr/local/bin/menu/*.sh
+    
+    # Delete old main menu symlink
+    [ -L "/usr/local/bin/menu" ] && rm -f /usr/local/bin/menu
+    [ -f "/usr/local/bin/menu.sh" ] && rm -f /usr/local/bin/menu.sh
+    
+    # Update main menu symlink
+    if [ -f "/usr/local/bin/menu/menu.sh" ]; then
+        ln -sf /usr/local/bin/menu/menu.sh /usr/local/bin/menu
+        chmod +x /usr/local/bin/menu
+        ln -sf /usr/local/bin/menu/menu.sh /usr/local/bin/menu.sh
+        chmod +x /usr/local/bin/menu.sh
+    fi
+    
+    success_msg "Menu files updated successfully!"
+    echo ""
+}
+
+# Update DNSTT
+update_dnstt() {
+    echo -e "${cyan}Updating DNSTT...${NC}"
+    
+    # Delete old DNSTT files
+    delete_old_files "/usr/local/bin/dnstt" "*"
+    
+    local dnstt_files=(
+        "dnstt-client-linux-386"
+        "dnstt-client-linux-amd64"
+        "dnstt-client-linux-arm64"
+        "dnstt-client-linux-armv7"
+        "dnstt-server-linux-386"
+        "dnstt-server-linux-amd64"
+        "dnstt-server-linux-arm64"
+        "dnstt-server-linux-armv7"
+        "install-dnstt.sh"
+        "menu-dnstt.sh"
+    )
+    
+    for file in "${dnstt_files[@]}"; do
+        download_file "$REPO_URL/dnstt/$file" "/usr/local/bin/dnstt/$file"
+    done
+    
+    chmod +x /usr/local/bin/dnstt/*
+    success_msg "DNSTT updated"
+}
+
+# Update SSHWS
+update_sshws() {
+    echo -e "${cyan}Updating SSHWS...${NC}"
+    
+    # Delete old SSHWS files
+    delete_old_files "/usr/local/bin/sshws" "*"
+    
+    local sshws_files=(
+        "insshws.sh"
+        "socks-ssh.py"
+        "socks.py"
+        "ws-dropbear.service"
+        "ws-stunnel.service"
+    )
+    
+    for file in "${sshws_files[@]}"; do
+        download_file "$REPO_URL/sshws/$file" "/usr/local/bin/sshws/$file"
+    done
+    
+    chmod +x /usr/local/bin/sshws/*.sh 2>/dev/null
+    chmod +x /usr/local/bin/sshws/*.py 2>/dev/null
+    
+    # Delete old systemd services
+    [ -f "/etc/systemd/system/ws-dropbear.service" ] && rm -f /etc/systemd/system/ws-dropbear.service
+    [ -f "/etc/systemd/system/ws-stunnel.service" ] && rm -f /etc/systemd/system/ws-stunnel.service
+    
+    # Copy new systemd services
+    if [ -f "/usr/local/bin/sshws/ws-dropbear.service" ]; then
+        cp /usr/local/bin/sshws/ws-dropbear.service /etc/systemd/system/
+    fi
+    if [ -f "/usr/local/bin/sshws/ws-stunnel.service" ]; then
+        cp /usr/local/bin/sshws/ws-stunnel.service /etc/systemd/system/
+    fi
+    
+    systemctl daemon-reload
+    systemctl restart ws-dropbear 2>/dev/null
+    systemctl restart ws-stunnel 2>/dev/null
+    
+    success_msg "SSHWS updated"
+}
+
+# Check for updates
+check_updates() {
+    echo -e "${cyan}Checking for updates...${NC}"
+    echo ""
+    
+    # Check current versions
+    if [ -f "/usr/local/bin/menu/versi" ]; then
+        current_version=$(cat /usr/local/bin/menu/versi 2>/dev/null || echo "unknown")
+        echo -e "Current version: ${yellow}$current_version${NC}"
+    else
+        echo -e "Current version: ${red}Not installed${NC}"
+    fi
+    
+    # Check latest version from repo
+    latest_version=$(curl -s "$REPO_URL/menu/versi" 2>/dev/null || echo "unknown")
+    echo -e "Latest version:  ${yellow}$latest_version${NC}"
+    echo ""
+    
+    if [ "$current_version" != "$latest_version" ] && [ "$latest_version" != "unknown" ] && [ "$current_version" != "Not installed" ]; then
+        echo -e "${green}✓ New version available!${NC}"
+    elif [ "$current_version" = "Not installed" ]; then
+        echo -e "${yellow}No installation detected. Please run update.${NC}"
+    else
+        echo -e "${green}You have the latest version.${NC}"
+    fi
+    echo ""
+}
+
+# Restore from backup
+restore_backup() {
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${cyan}              🔄 RESTORE FROM BACKUP                         ${NC}"
+    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    
+    # List available backups
+    backups=($(ls -dt /root/backup_* 2>/dev/null))
+    
+    if [ ${#backups[@]} -eq 0 ]; then
+        echo -e "${red}✗ No backups found!${NC}"
+        return
+    fi
+    
+    echo -e "${yellow}Available backups:${NC}"
+    for i in "${!backups[@]}"; do
+        backup_date=$(basename "${backups[$i]}" | sed 's/backup_//')
+        echo -e "  $((i+1)). ${backup_date}"
+    done
+    echo ""
+    
+    read -p "Select backup to restore [1-${#backups[@]}]: " backup_choice
+    backup_choice=$((backup_choice-1))
+    
+    if [ -z "${backups[$backup_choice]}" ]; then
+        echo -e "${red}✗ Invalid selection!${NC}"
+        return
+    fi
+    
+    selected_backup="${backups[$backup_choice]}"
+    echo -e "${yellow}Restoring from: $selected_backup${NC}"
+    
+    # Confirm restore
+    read -p "WARNING: This will overwrite current files. Continue? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${yellow}Restore cancelled.${NC}"
+        return
+    fi
+    
+    # Restore files
+    [ -d "$selected_backup/xray" ] && cp -rf "$selected_backup/xray" /etc/ 2>/dev/null
+    [ -d "$selected_backup/v2ray" ] && cp -rf "$selected_backup/v2ray" /etc/ 2>/dev/null
+    [ -d "$selected_backup/ssh" ] && cp -rf "$selected_backup/ssh" /usr/local/bin/ 2>/dev/null
+    [ -d "$selected_backup/xray" ] && cp -rf "$selected_backup/xray" /usr/local/bin/ 2>/dev/null
+    [ -d "$selected_backup/menu" ] && cp -rf "$selected_backup/menu" /usr/local/bin/ 2>/dev/null
+    [ -d "$selected_backup/dnstt" ] && cp -rf "$selected_backup/dnstt" /usr/local/bin/ 2>/dev/null
+    [ -d "$selected_backup/sshws" ] && cp -rf "$selected_backup/sshws" /usr/local/bin/ 2>/dev/null
+    [ -f "$selected_backup/passwd" ] && cp "$selected_backup/passwd" /etc/ 2>/dev/null
+    [ -f "$selected_backup/shadow" ] && cp "$selected_backup/shadow" /etc/ 2>/dev/null
+    [ -f "$selected_backup/domain.txt" ] && cp "$selected_backup/domain.txt" /root/ 2>/dev/null
+    
+    # Restore permissions
+    chmod +x /usr/local/bin/ssh/*.sh 2>/dev/null
+    chmod +x /usr/local/bin/xray/*.sh 2>/dev/null
+    chmod +x /usr/local/bin/menu/*.sh 2>/dev/null
+    
+    success_msg "Backup restored successfully!"
+    echo -e "${yellow}Please restart services if needed.${NC}"
+}
+
+# ---------- MAIN MENU ----------
+main_menu() {
+    echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${purple}║${white}     ██╗   ██╗██████╗ ██████╗  █████╗ ████████╗███████╗${purple}║${NC}"
+    echo -e "${purple}║${white}     ██║   ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝${purple}║${NC}"
+    echo -e "${purple}║${white}     ██║   ██║██████╔╝██║  ██║███████║   ██║   █████╗  ${purple}║${NC}"
+    echo -e "${purple}║${white}     ██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝  ${purple}║${NC}"
+    echo -e "${purple}║${white}     ╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗${purple}║${NC}"
+    echo -e "${purple}║${white}      ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝${purple}║${NC}"
+    echo -e "${purple}║${cyan}                    • UPDATE MANAGER •                     ${purple}║${NC}"
+    echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${cyan}┌─────────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${cyan}│${white}  [1] UPDATE ALL SERVICES (SSH, Xray, Menu, DNSTT)     ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [2] UPDATE SSH ONLY                                ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [3] UPDATE XRAY ONLY                              ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [4] UPDATE MENU FILES ONLY                        ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [5] CHECK FOR UPDATES                             ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [6] RESTORE FROM BACKUP                           ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [0] EXIT                                          ${cyan}│${NC}"
+    echo -e "${cyan}└─────────────────────────────────────────────────────────────┘${NC}"
+    echo ""
+    
+    read -p "Select option [0-6]: " choice
+    echo ""
+    
+    case $choice in
+        1)
+            update_all
             ;;
-        "2")
-            echo -e "${GREEN}  ✅ SSH Scripts Only       : Updated (17 scripts)${NC}"
-            echo -e "${YELLOW}  ⚠️  Menu & Xray unchanged  : Skipped${NC}"
+        2)
+            update_ssh
             ;;
-        "3")
-            echo -e "${GREEN}  ✅ Xray Scripts Only      : Updated (22 scripts)${NC}"
-            echo -e "${YELLOW}  ⚠️  Menu & SSH unchanged   : Skipped${NC}"
+        3)
+            update_xray
             ;;
-        "4")
-            echo -e "${GREEN}  ✅ Menu Scripts Only      : Updated (18 scripts)${NC}"
-            echo -e "${YELLOW}  ⚠️  SSH & Xray unchanged   : Skipped${NC}"
+        4)
+            update_menu
+            ;;
+        5)
+            check_updates
+            ;;
+        6)
+            restore_backup
+            ;;
+        0)
+            echo -e "${green}Exiting...${NC}"
+            exit 0
+            ;;
+        *)
+            echo -e "${red}✗ Invalid option! Please select 0-6.${NC}"
+            echo ""
+            read -n 1 -s -r -p "Press any key to continue..."
+            main_menu
             ;;
     esac
     
     echo ""
-    echo -e "${YELLOW}  📁 Backup Location   : $backup_loc${NC}"
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${WHITE}                   🔧 MANAGEMENT${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo -e "  ${GREEN}menu${NC}         - Main menu"
-    echo -e "  ${GREEN}usernew${NC}     - Create SSH user"
-    echo -e "  ${GREEN}running${NC}     - Check service status"
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${PURPLE}║${WHITE}           THANK YOU FOR USING MARCSCRIPT!              ${PURPLE}║${NC}"
-    echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
+    read -n 1 -s -r -p "Press any key to continue..."
+    main_menu
 }
 
-# ============================================================
-# MAIN MENU
-# ============================================================
-clear
-echo ""
-echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${PURPLE}║${CYAN}                   🔄 UPDATE SYSTEM                        ${PURPLE}║${NC}"
-echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "${WHITE}Select update option:${NC}"
-echo ""
-echo -e "  ${GREEN}1)${NC} Update ${WHITE}ALL SERVICES${NC}      - Full system update (setup + scripts)"
-echo -e "  ${GREEN}2)${NC} Update ${WHITE}SSH ONLY${NC}          - Update SSH/SSHWS scripts only"
-echo -e "  ${GREEN}3)${NC} Update ${WHITE}XRAY ONLY${NC}         - Update Xray/V2Ray scripts only"
-echo -e "  ${GREEN}4)${NC} Update ${WHITE}MENU ONLY${NC}         - Update menu files only"
-echo -e "  ${RED}0)${NC} ${RED}Cancel${NC}"
-echo ""
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${YELLOW}⚠️  Backup will be created before any update${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
+# ---------- INITIAL SETUP ----------
+setup_repository() {
+    # Create directories
+    mkdir -p /usr/local/bin/{ssh,xray,menu,dnstt,sshws}
+    mkdir -p /etc/marcscript
+    mkdir -p /etc/nginx
+    
+    # Create log file
+    touch "$LOG_FILE"
+    
+    # Set permissions
+    chmod 755 /usr/local/bin/{ssh,xray,menu,dnstt,sshws} 2>/dev/null
+    
+    # Add to PATH if not already there
+    if [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
+        echo 'export PATH=$PATH:/usr/local/bin' >> /etc/profile
+        export PATH=$PATH:/usr/local/bin
+    fi
+}
 
-read -p "  Enter your choice [0-4]: " choice
+# ---------- START SCRIPT ----------
+setup_repository
 
-case $choice in
-    0)
-        echo -e "${YELLOW}Update cancelled by user${NC}"
-        exit 0
-        ;;
-    1)
-        # FULL UPDATE
-        create_backup
-        run_full_setup
-        if [ $? -eq 0 ]; then
-            update_menu
-            update_ssh
-            update_xray
-            show_summary "1" "$BACKUP_DIR"
-        else
-            print_error "Full setup failed. Please check your connection and try again."
-            exit 1
-        fi
-        ;;
-    2)
-        # SSH ONLY
-        create_backup
-        update_ssh
-        show_summary "2" "$BACKUP_DIR"
-        ;;
-    3)
-        # XRAY ONLY
-        create_backup
-        update_xray
-        show_summary "3" "$BACKUP_DIR"
-        ;;
-    4)
-        # MENU ONLY
-        create_backup
-        update_menu
-        show_summary "4" "$BACKUP_DIR"
-        ;;
-    *)
-        echo -e "${RED}Invalid choice! Please select 0-4${NC}"
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+    echo -e "${red}✗ This script must be run as root!${NC}"
+    exit 1
+fi
+
+# Check internet connection
+if ! ping -c 1 google.com &> /dev/null; then
+    if ! ping -c 1 8.8.8.8 &> /dev/null; then
+        echo -e "${red}✗ No internet connection!${NC}"
         exit 1
-        ;;
-esac
+    fi
+fi
 
-exit 0
+# Main execution
+main_menu
