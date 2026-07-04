@@ -109,28 +109,16 @@ update_all() {
 
 # Update Menu only
 update_menu() {
-    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${cyan}              🔄 UPDATING MENU FILES                         ${NC}"
-    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
-    echo ""
+    echo -e "Downloading management scripts..."
+    GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
+    cd /usr/bin
     
-    read -p "This will update Menu files. Continue? (y/N): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        echo -e "${yellow}Update cancelled.${NC}"
-        return
-    fi
-    
-    create_backup
-    
-    # Remove old menu files
-    echo -e "${yellow}Removing old menu files...${NC}"
-    rm -rf /usr/bin/menu 2>/dev/null
-    success_msg "Old menu files removed"
-    
-    # Download menu scripts using dl function
-    echo -e "${cyan}Downloading menu scripts...${NC}"
-    cd /usr/bin || return
-    
+    rm -rf /usr/bin/menu
+
+    dl() {
+        wget -q -O "$1" "$GHBASE/$2" && chmod +x "$1" && sed -i 's/\r$//' "$1"
+    }
+
     dl menu menu/menu.sh
     dl m-sshovpn menu/m-sshovpn.sh
     dl m-vmess menu/m-vmess.sh
@@ -138,43 +126,26 @@ update_menu() {
     dl m-trojan menu/m-trojan.sh
     dl m-ssws menu/m-ssws.sh
     dl m-system menu/m-system.sh
-    dl m-xray menu/m-xray.sh
-    dl m-domain menu/m-domain.sh
-    dl m-dns menu/m-dns.sh
-    dl m-webmin menu/m-webmin.sh
     dl running menu/running.sh
     dl clearcache menu/clearcache.sh
-    dl restart menu/restart.sh
-    dl bw menu/bw.sh
-    dl auto-reboot menu/auto-reboot.sh
-    dl tcp menu/tcp.sh
-    dl update menu/update.sh
-    dl versi menu/versi
-    
-    # Fix permissions
-    chmod +x /usr/bin/menu/*.sh 2>/dev/null
-    chmod +x /usr/bin/menu/update 2>/dev/null
-    
-    # ✅ FIXED: Remove old symlink properly
-    if [ -L "/usr/bin/menu" ]; then
-        rm -f /usr/bin/menu
-    fi
-    
-    # Create proper symlink - ONLY for menu.sh
-    if [ -f "/usr/bin/menu/menu.sh" ]; then
-        # Remove old menu command if it exists as a file or symlink
-        [ -f "/usr/bin/menu" ] && rm -f /usr/bin/menu
-        [ -L "/usr/bin/menu" ] && rm -f /usr/bin/menu
-        
-        # Create symlink from /usr/bin/menu to the script
-        ln -sf /usr/bin/menu/menu.sh /usr/bin/menu
-        chmod +x /usr/bin/menu
-        success_msg "Created symlink: /usr/bin/menu -> /usr/bin/menu/menu.sh"
-    fi
-    
+
+    dl usernew ssh/usernew.sh
+    dl trial ssh/trial.sh
+    dl renew ssh/renew.sh
+    dl hapus ssh/hapus.sh
+    dl cek ssh/cek.sh
+    dl member ssh/member.sh
+    dl delete ssh/delete.sh
+    dl autokill ssh/autokill.sh
+    dl ceklim ssh/ceklim.sh
+    dl tendang ssh/tendang.sh
+    dl sshws ssh/sshws.sh
+    dl add-host ssh/add-host.sh
+    dl xp ssh/xp.sh
+    dl speedtest ssh/speedtest_cli.py
+
     cd /
-    success_msg "Menu files updated successfully!"
-    echo ""
+    echo -e "${purple}Management scripts downloaded (line endings fixed)"
 }
 
 # Update SSH only
