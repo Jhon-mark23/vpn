@@ -85,8 +85,8 @@ echo ""
 
 # Menu Navigation Routing Selection Nodes
 echo -e " [ ${cyan}01${NC} ] SSH & WebSocket Menu"
-echo -e " [ ${cyan}02${NC} ] Xray Vmess Menu"
-echo -e " [ ${cyan}03${NC} ] Xray Menu"
+echo -e " [ ${cyan}02${NC} ] Xray  Menu"
+echo -e " [ ${cyan}03${NC} ] Xray Vmess Menu"
 echo -e " [ ${cyan}04${NC} ] Xray Vless Menu"
 echo -e " [ ${cyan}05${NC} ] Xray Trojan Menu"
 echo -e " [ ${cyan}06${NC} ] Xray Shadowsocks Menu"
