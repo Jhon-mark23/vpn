@@ -1,18 +1,14 @@
 #!/bin/bash
 # ============================================================
-# MARCSCRIPT SSH-VPN INSTALLER - XRAY COMPATIBLE
-# (Centralised certificate + max client compatibility)
-# ALL PROTOCOLS FIXED & WORKING WITH ENHANCED BACKUP & ROLLBACK
-# 
-# UPDATED: Nginx → nginx-setup.sh | Proxy → insshws.sh
-# SSH only on port 22 (port 80 handled by Nginx reverse proxy)
+# MARCSCRIPT SSH-VPN INSTALLER 
+# SSH: 22, 2222 | SSL: 8443-8445 | WS: 8080 | Dropbear: 109,143
+# DNSTT compatible (SSH 2222)
 # ============================================================
 
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 export NEEDRESTART_SUSPEND=1
 
-# Global variables for safety and backup tracking
 BACKUP_DIR="/root/ssh-vpn-backup-$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="/var/log/marcscript-vpn-install.log"
 
@@ -22,7 +18,6 @@ red='\e[1;31m'
 blue='\e[0;34m'
 NC='\e[0m'
 
-# Map original logging functions to match your desired aio.sh style aliases
 print_info()  { echo -e "[ ${green}INFO${NC} ] $1"; echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] $1" >> "$LOG_FILE"; }
 print_error() { echo -e "[ ${red}ERROR${NC} ] $1"; echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $1" >> "$LOG_FILE"; }
 print_warning(){ echo -e "[ ${yell}WARNING${NC} ] $1"; echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARNING] $1" >> "$LOG_FILE"; }
@@ -32,12 +27,10 @@ log_info()    { print_info "$1"; }
 log_error()   { print_error "$1"; }
 log_success() { print_success "$1"; }
 
-# Dummy helpers to maintain structure seamlessly without missing functions
 update_json() { :; }
 add_error_to_json() { :; }
 rollback_on_error() { print_error "Fatal error encountered during $1. Exiting."; exit 1; }
 
-# ============================================================
 detect_os() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
@@ -61,75 +54,57 @@ setup_environment() {
 }
 
 run_safety_and_backup() {
-    print_info "Running safety checks and analyzing script port availability..."
+    print_info "Running safety checks and backup..."
 
     if [ "$EUID" -ne 0 ]; then
         print_error "This script must be run as root"
         exit 1
     fi
 
-    # Target Ports: 22, 8443, 8444, 8445, 8080, 109, 143
-    # NOTE: Port 80 is now handled by Nginx reverse proxy (nginx-setup.sh)
-    local used_ports=$(ss -tuln | grep -E ':(22|8443|8444|8445|8080|109|143)\s' || true)
+    local used_ports=$(ss -tuln | grep -E ':(22|2222|8443|8444|8445|8080|109|143)\s' || true)
     if [ -n "$used_ports" ]; then
-        print_warning "Some required application ports are already active on this host:"
+        print_warning "Some ports already in use:"
         echo -e "${yell}$used_ports${NC}"
         echo ""
-        read -p "Proceed and overwrite settings anyway? (y/N): " -n 1 -r
+        read -p "Proceed anyway? (y/N): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_error "Installation aborted by user due to running resource collisions."
+            print_error "Installation aborted."
             exit 1
         fi
     fi
 
-    print_info "Creating systemic backup in $BACKUP_DIR ..."
     mkdir -p "$BACKUP_DIR"
-    
-    cp /etc/ssh/sshd_config "$BACKUP_DIR/sshd_config.backup" 2>/dev/null || true
-    cp /etc/default/dropbear "$BACKUP_DIR/dropbear.backup" 2>/dev/null || true
-    cp /etc/stunnel/stunnel.conf "$BACKUP_DIR/stunnel.conf.backup" 2>/dev/null || true
-    cp /etc/default/stunnel4 "$BACKUP_DIR/stunnel4.backup" 2>/dev/null || true
-    cp /opt/ws-proxy/ws-proxy.js "$BACKUP_DIR/ws-proxy.js.backup" 2>/dev/null || true
-    cp /etc/rc.local "$BACKUP_DIR/rc.local.backup" 2>/dev/null || true
-    
-    if command -v iptables-save &>/dev/null; then
-        iptables-save > "$BACKUP_DIR/iptables.backup"
-    fi
+    cp /etc/ssh/sshd_config "$BACKUP_DIR/" 2>/dev/null || true
+    cp /etc/default/dropbear "$BACKUP_DIR/" 2>/dev/null || true
+    cp /etc/stunnel/stunnel.conf "$BACKUP_DIR/" 2>/dev/null || true
+    cp /etc/default/stunnel4 "$BACKUP_DIR/" 2>/dev/null || true
+    cp /opt/ws-proxy/ws-proxy.js "$BACKUP_DIR/" 2>/dev/null || true
+    cp /etc/rc.local "$BACKUP_DIR/" 2>/dev/null || true
+    iptables-save > "$BACKUP_DIR/iptables.backup" 2>/dev/null || true
 
     cat > /root/vpn-rollback.sh <<EOF
 #!/bin/bash
-echo "=== System rollback in progress ==="
-
-[ -f "$BACKUP_DIR/sshd_config.backup" ] && cp "$BACKUP_DIR/sshd_config.backup" /etc/ssh/sshd_config && systemctl restart ssh 2>/dev/null
-[ -f "$BACKUP_DIR/dropbear.backup" ] && cp "$BACKUP_DIR/dropbear.backup" /etc/default/dropbear && systemctl restart dropbear 2>/dev/null
-[ -f "$BACKUP_DIR/stunnel.conf.backup" ] && cp "$BACKUP_DIR/stunnel.conf.backup" /etc/stunnel/stunnel.conf
-[ -f "$BACKUP_DIR/stunnel4.backup" ] && cp "$BACKUP_DIR/stunnel4.backup" /etc/default/stunnel4 && systemctl restart stunnel4 2>/dev/null
-[ -f "$BACKUP_DIR/ws-proxy.js.backup" ] && cp "$BACKUP_DIR/ws-proxy.js.backup" /opt/ws-proxy/ws-proxy.js && systemctl restart ws-proxy 2>/dev/null
-[ -f "$BACKUP_DIR/rc.local.backup" ] && cp "$BACKUP_DIR/rc.local.backup" /etc/rc.local && chmod +x /etc/rc.local
-
-if [ -f "$BACKUP_DIR/iptables.backup" ]; then
-    iptables-restore < "$BACKUP_DIR/iptables.backup"
-    if command -v netfilter-persistent &>/dev/null; then
-        netfilter-persistent save 2>/dev/null
-    fi
-fi
-
+echo "=== Rollback in progress ==="
+[ -f "$BACKUP_DIR/sshd_config" ] && cp "$BACKUP_DIR/sshd_config" /etc/ssh/sshd_config && systemctl restart ssh
+[ -f "$BACKUP_DIR/dropbear" ] && cp "$BACKUP_DIR/dropbear" /etc/default/dropbear && systemctl restart dropbear
+[ -f "$BACKUP_DIR/stunnel.conf" ] && cp "$BACKUP_DIR/stunnel.conf" /etc/stunnel/stunnel.conf
+[ -f "$BACKUP_DIR/stunnel4" ] && cp "$BACKUP_DIR/stunnel4" /etc/default/stunnel4 && systemctl restart stunnel4
+[ -f "$BACKUP_DIR/ws-proxy.js" ] && cp "$BACKUP_DIR/ws-proxy.js" /opt/ws-proxy/ws-proxy.js && systemctl restart ws-proxy
+[ -f "$BACKUP_DIR/iptables.backup" ] && iptables-restore < "$BACKUP_DIR/iptables.backup"
 systemctl daemon-reload
-echo "=== System restored to original installation baseline ==="
+echo "Rollback complete"
 EOF
     chmod +x /root/vpn-rollback.sh
-    print_success "Backup preserved. Rollback script available at: /root/vpn-rollback.sh"
+    print_success "Backup saved. Rollback: /root/vpn-rollback.sh"
 }
 
 install_base_packages() {
     print_info "Installing base packages..."
-    apt update -y || true
+    apt update -y
     apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || true
-    apt dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || true
     apt-get remove --purge ufw firewalld exim4 -y 2>/dev/null || true
 
-    # REMOVED: nginx, squid (now in nginx-setup.sh and insshws.sh)
     local packages="screen curl jq bzip2 gzip vnstat coreutils rsyslog iftop zip unzip git apt-transport-https build-essential net-tools wget gnupg gnupg2 iptables-persistent netfilter-persistent openssl ca-certificates stunnel4 dropbear fail2ban"
     for pkg in $packages; do
         if ! dpkg -l | grep -qE "^ii|^hi" "$pkg"; then
@@ -180,188 +155,173 @@ END
 }
 
 # ============================================================
-# PROTOCOL 1: SSH (Port 22 only - Port 80 via Nginx proxy)
+# PROTOCOL 1: SSH (ports 22, 2222)
 # ============================================================
 configure_ssh() {
     log_info "Configuring SSH server..."
-    update_json "ssh.status" "configuring"
-
-    # Make the precise pre-change backup targeted by the validation block
     cp /etc/ssh/sshd_config "$BACKUP_DIR/sshd_config.pre_change"
 
-    # Clean out any old custom configuration setups to avoid duplicates
     sed -i '/^Port /d' /etc/ssh/sshd_config
     sed -i '/^PasswordAuthentication /d' /etc/ssh/sshd_config
     sed -i '/^PermitRootLogin /d' /etc/ssh/sshd_config
     sed -i '/^Banner /d' /etc/ssh/sshd_config
 
-    # SSH only on port 22 - Port 80 handled by Nginx reverse proxy
     echo "Port 22" >> /etc/ssh/sshd_config
+    echo "Port 2222" >> /etc/ssh/sshd_config
     echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
-    # Create SSH banner
+    # Banner (simplified)
     cat > /etc/ssh/ssh_banner <<'EOF'
-
-<center>
-
-<h1>
-🚀
-<font color="#00b0ff">M</font><font color="#29b6f6">A</font><font color="#4fc3f7">R</font><font color="#81d4fa">C</font><font color="#b3e5fc">S</font><font color="#4dd0e1">C</font><font color="#26c6da">R</font><font color="#00acc1">I</font><font color="#0097a7">P</font><font color="#00838f">T</font>
-🚀
-</h1>
-
-<font color="#00e5ff">
-███████╗███████╗██╗  ██╗
-</font><br>
-<font color="#4dd0e1">
-██╔════╝██╔════╝██║  ██║
-</font><br>
-<font color="#80deea">
-███████╗███████╗███████║
-</font><br>
-<font color="#b2ebf2">
-╚════██║╚════██║██╔══██║
-</font><br>
-<font color="#e0f7fa">
-███████║███████║██║  ██║
-</font><br>
-<font color="#ffffff">
-╚══════╝╚══════╝╚═╝  ╚═╝
-</font>
-
-<br><br>
-
-<font color="#ffff00"><b>CONNECTING...</b></font>
-
-<br>
-
-<font color="#ffff00">██████░░░░ 20%</font><br>
-<font color="#bfff00">██████████░░ 40%</font><br>
-<font color="#76ff03">██████████████░░ 60%</font><br>
-<font color="#00e676">██████████████████░░ 80%</font><br>
-<font color="#00e5ff">████████████████████ 100%</font>
-
-<br><br>
-
-<font color="#2962ff">🅒</font>
-<font color="#2979ff">🅞</font>
-<font color="#448aff">🅝</font>
-<font color="#64b5f6">🅝</font>
-<font color="#82b1ff">🅔</font>
-<font color="#80deea">🅒</font>
-<font color="#26c6da">🅣</font>
-<font color="#00acc1">🅔</font>
-<font color="#00e5ff">🅓</font>
-
-<br><br>
-
-<h2>
-📡 <font color="#00b0ff">MARCSCRIPT SSH VPN SERVER</font>
-</h2>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-<font color="#00ff66"><b>📡 AVAILABLE PROTOCOLS</b></font>
-<br><br>
-
-<font color="#ffffff">🔹 SSH DIRECT</font><br>
-<font color="#00e5ff">➜ Port : 22</font>
-<br>
-
-<font color="#ffffff">🔹 SSH + SSL (Stunnel)</font><br>
-<font color="#00e5ff">➜ Port : 443 (via Nginx Proxy)</font>
-
-<br><br>
-
-<font color="#ffffff">🔹 SSH + WebSocket</font><br>
-<font color="#00e5ff">➜ Port : 80/443 (via Nginx Proxy)</font>
-
-<br><br>
-
-<font color="#ffffff">🔹 SSH + WS + SSL</font><br>
-<font color="#00e5ff">➜ Port : 443 (via Nginx Proxy)</font>
-
-<br><br>
-
-<font color="#ffffff">🔹 Xray / V2Ray TLS</font><br>
-<font color="#00ff80">➜ Port : 443 (via Nginx Proxy)</font>
-
-<br><br>
-
-<font color="#ffffff">🔹 Xray / V2Ray None TLS</font><br>
-<font color="#ffeb3b">➜ Port : 80 (via Nginx Proxy)</font>
-
-<br><br>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-<font color="#00ffcc">
-🚀 FAST • STABLE • SECURE
-</font>
-
-<br>
-
-<font color="#80ff00">
-⚡ MARCSCRIPT VPN ⚡
-</font>
-
-</center>
+        <center>
+        
+        <h1>
+        🚀
+        <font color="#00b0ff">M</font><font color="#29b6f6">A</font><font color="#4fc3f7">R</font><font color="#81d4fa">C</font><font color="#b3e5fc">S</font><font color="#4dd0e1">C</font><font color="#26c6da">R</font><font color="#00acc1">I</font><font color="#0097a7">P</font><font color="#00838f">T</font>
+        🚀
+        </h1>
+        
+        <font color="#00e5ff">
+        ███████╗███████╗██╗  ██╗
+        </font><br>
+        <font color="#4dd0e1">
+        ██╔════╝██╔════╝██║  ██║
+        </font><br>
+        <font color="#80deea">
+        ███████╗███████╗███████║
+        </font><br>
+        <font color="#b2ebf2">
+        ╚════██║╚════██║██╔══██║
+        </font><br>
+        <font color="#e0f7fa">
+        ███████║███████║██║  ██║
+        </font><br>
+        <font color="#ffffff">
+        ╚══════╝╚══════╝╚═╝  ╚═╝
+        </font>
+        
+        <br><br>
+        
+        <font color="#ffff00"><b>CONNECTING...</b></font>
+        
+        <br>
+        
+        <font color="#ffff00">██████░░░░ 20%</font><br>
+        <font color="#bfff00">██████████░░ 40%</font><br>
+        <font color="#76ff03">██████████████░░ 60%</font><br>
+        <font color="#00e676">██████████████████░░ 80%</font><br>
+        <font color="#00e5ff">████████████████████ 100%</font>
+        
+        <br><br>
+        
+        <font color="#2962ff">🅒</font>
+        <font color="#2979ff">🅞</font>
+        <font color="#448aff">🅝</font>
+        <font color="#64b5f6">🅝</font>
+        <font color="#82b1ff">🅔</font>
+        <font color="#80deea">🅒</font>
+        <font color="#26c6da">🅣</font>
+        <font color="#00acc1">🅔</font>
+        <font color="#00e5ff">🅓</font>
+        
+        <br><br>
+        
+        <h2>
+        📡 <font color="#00b0ff">MARCSCRIPT SSH  XRAY VPN SERVER</font>
+        </h2>
+        
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━
+        
+        <font color="#00ff66"><b>📡 AVAILABLE PROTOCOLS</b></font>
+        <br><br>
+        
+        <font color="#ffffff">🔹 SSH DIRECT</font><br>
+        <font color="#00e5ff">➜ Port : 22 </font>
+        <br>
+        <font color="#00e5ff">NOTE: If you using HTTP CUSTOM and has error in Port 22 direct use HTTP INJECTOR</font>
+        
+        <br><br>
+        
+        <font color="#ffffff">🔹 SSH + SSL (Stunnel)</font><br>
+        <font color="#00e5ff">➜ Port : 8443 </font>
+        
+        <br><br>
+        
+        <font color="#ffffff">🔹 SSH + WebSocket</font><br>
+        <font color="#00e5ff">➜ Port : 8080 </font>
+        
+        <br><br>
+        
+        <font color="#ffffff">🔹 SSH + WS + SSL</font><br>
+        <font color="#00e5ff">➜ Port : 8445</font>
+        
+        <br><br>
+        
+        <font color="#ffffff">🔹 Xray / V2Ray TLS</font><br>
+        <font color="#00ff80">➜ Port : 443</font>
+        
+        <br><br>
+        
+        <font color="#ffffff">🔹 Xray / V2Ray None TLS</font><br>
+        <font color="#ffeb3b">➜ Port : 80</font>
+        
+        <br><br>
+        
+        
+        <font color="#00ffcc">
+                    🚀 FAST • STABLE • SECURE
+        </font>
+        
+        <br>
+        
+        <font color="#80ff00">
+                ⚡ MARCSCRIPT VPN ⚡
+        </font>
+        
+        </center>
 EOF
-    
     echo "Banner /etc/ssh/ssh_banner" >> /etc/ssh/sshd_config
-    # Backup first
     cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
 
-    # Append clean, compatible algorithms safely
     cat << 'EOF' >> /etc/ssh/sshd_config
 
-# --- MARCSCRIPT PROTOCOL COMPATIBILITY ENGINE ---
+# --- MARCSCRIPT PROTOCOL COMPATIBILITY ---
 KexAlgorithms +diffie-hellman-group-exchange-sha256
 Ciphers +aes128-ctr,aes192-ctr,aes256-ctr
 HostKeyAlgorithms +ssh-rsa
 PubkeyAcceptedAlgorithms +ssh-rsa
 EOF
 
-    # Validate configuration syntax cleanly
     sshd -t >> "$LOG_FILE" 2>&1 || {
         log_error "SSH config test failed"
         cp "$BACKUP_DIR/sshd_config.pre_change" /etc/ssh/sshd_config
-        add_error_to_json "SSH config test failed"
         rollback_on_error "SSH configuration"
     }
 
-    # Apply changes
     systemctl restart ssh >> "$LOG_FILE" 2>&1 || {
         log_error "Failed to restart SSH"
         cp "$BACKUP_DIR/sshd_config.pre_change" /etc/ssh/sshd_config
         systemctl restart ssh
-        add_error_to_json "SSH restart failed"
         rollback_on_error "SSH restart"
     }
 
-    # Verify run time status active validation block
     sleep 3
     if ! systemctl is-active --quiet ssh; then
-        log_error "SSH not running after restart"
+        log_error "SSH not running"
         cp "$BACKUP_DIR/sshd_config.pre_change" /etc/ssh/sshd_config
         systemctl restart ssh
-        add_error_to_json "SSH not active"
         rollback_on_error "SSH verification"
     fi
 
     systemctl enable ssh >> "$LOG_FILE" 2>&1
-    update_json "ssh.status" "running"
-    log_success "SSH configured on port 22 (Port 80 via Nginx reverse proxy)"
+    log_success "SSH on ports 22, 2222"
 }
 
 # ============================================================
-# PROTOCOL 2: SSH+SSL with maximum TLS compatibility
-# Stunnel now listens internally, Nginx proxies from 443
+# PROTOCOL 2: SSH+SSL (Stunnel direct – 8443, 8444, 8445)
 # ============================================================
 configure_stunnel() {
-    print_info "Configuring SSH+SSL (internal ports 8443, 8444, 8445) with broad TLS support..."
-    print_info "These will be accessible via Nginx reverse proxy on port 443"
+    print_info "Configuring SSH+SSL (direct ports 8443, 8444, 8445)..."
 
     if [ ! -f /etc/stunnel/stunnel.pem ]; then
         print_info "Generating SSL certificate..."
@@ -386,8 +346,6 @@ configure_stunnel() {
     chown stunnel4:stunnel4 /etc/stunnel/stunnel.pem 2>/dev/null || true
 
     cat > /etc/stunnel/stunnel.conf <<'EOF'
-; Stunnel4 Config – maximum client compatibility
-; Internal ports - Nginx reverse proxy handles external connections
 cert = /etc/stunnel/stunnel.pem
 client = no
 socket = a:SO_REUSEADDR=1
@@ -405,20 +363,14 @@ ciphers = DEFAULT:!aNULL:!eNULL:!LOW:!MD5:!EXP:!RC4
 [ssh-ssl]
 accept = 8443
 connect = 127.0.0.1:22
-cert = /etc/stunnel/stunnel.pem
-TIMEOUTclose = 0
 
 [ssh-ssl-alt]
 accept = 8444
 connect = 127.0.0.1:22
-cert = /etc/stunnel/stunnel.pem
-TIMEOUTclose = 0
 
 [ws-ssl]
 accept = 8445
 connect = 127.0.0.1:8080
-cert = /etc/stunnel/stunnel.pem
-TIMEOUTclose = 0
 EOF
 
     echo 'ENABLED=1' > /etc/default/stunnel4
@@ -436,27 +388,21 @@ EOF
     systemctl enable stunnel4 2>/dev/null || true
     systemctl stop stunnel4 2>/dev/null; sleep 1
     systemctl start stunnel4 2>/dev/null || true
-    
     sleep 2
+
     if systemctl is-active --quiet stunnel4; then
-        print_success "SSH+SSL on internal ports 8443, 8444, 8445 (TLS 1.0-1.3, broad ciphers)"
-        print_info "Access via Nginx reverse proxy on port 443"
+        print_success "Stunnel on 8443, 8444, 8445"
     else
-        print_warning "Stunnel4 failed to start, checking logs..."
-        journalctl -u stunnel4 --no-pager -n 5
+        print_warning "Stunnel failed – check logs: journalctl -u stunnel4"
     fi
 }
 
 # ============================================================
-# PROTOCOL 3: SSH+WS (Node.js WebSocket proxy)
-# Port 8080 internal, Nginx proxies from 80/443
+# PROTOCOL 3: SSH+WS (Node.js, port 8080)
 # ============================================================
 configure_websocket() {
-    print_info "Configuring SSH+WS (internal port 8080, fallback 8082)..."
-    print_info "Accessible via Nginx reverse proxy on ports 80 & 443"
-    
+    print_info "Configuring SSH+WS (port 8080)..."
     fuser -k 8080/tcp 2>/dev/null || true
-    fuser -k 8082/tcp 2>/dev/null || true
     mkdir -p /opt/ws-proxy
 
     cat > /opt/ws-proxy/ws-proxy.js <<'EOF'
@@ -472,9 +418,7 @@ const LOG_FILE = '/var/log/ws-proxy.log';
 
 function log(msg) {
     const ts = new Date().toISOString();
-    const line = `[${ts}] ${msg}\n`;
-    console.log(line.trim());
-    fs.appendFileSync(LOG_FILE, line, { flag: 'a' });
+    fs.appendFileSync(LOG_FILE, `[${ts}] ${msg}\n`);
 }
 
 log('Starting SSH WebSocket Proxy...');
@@ -483,7 +427,7 @@ const server = http.createServer();
 server.on('connect', (req, socket) => {
     log(`CONNECT: ${req.url}`);
     const ssh = net.connect(SSH_PORT, SSH_HOST, () => {
-        socket.write('HTTP/1.1 200 Connection Established\r\nProxy-Agent: MarcScript\r\n\r\n');
+        socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
         ssh.pipe(socket);
         socket.pipe(ssh);
     });
@@ -501,44 +445,22 @@ server.on('upgrade', (req, socket) => {
     ssh.on('error', (e) => { log(`WS SSH error: ${e.message}`); socket.destroy(); });
 });
 
-server.on('request', (req, res) => {
-    if (req.url === '/' || req.url === '/status') {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<html><head><title>SSH WebSocket Proxy</title></head>
-            <body><h1>🚀 SSH WebSocket Proxy</h1><p>Status: Running</p>
-            <p>Uptime: ${Math.floor(process.uptime())} s</p>
-            <p>SSH: ${SSH_HOST}:${SSH_PORT}</p>
-            <hr><small>MarcScript SSH VPN Proxy</small></body></html>`);
-    } else {
-        res.writeHead(404);
-        res.end('Not Found');
-    }
-});
-
-server.listen(WS_PORT, '0.0.0.0', () => log(`✅ WebSocket proxy on port ${WS_PORT}`));
-
-process.on('SIGTERM', () => { log('SIGTERM, shutting down...'); server.close(() => process.exit(0)); });
-process.on('SIGINT',  () => { log('SIGINT, shutting down...');  server.close(() => process.exit(0)); });
-process.on('uncaughtException', (e) => log(`Uncaught: ${e.message}`));
+server.listen(WS_PORT, '0.0.0.0', () => log(`WebSocket proxy on port ${WS_PORT}`));
 EOF
 
     chmod +x /opt/ws-proxy/ws-proxy.js
 
     cat > /etc/systemd/system/ws-proxy.service <<'EOF'
 [Unit]
-Description=SSH WebSocket Proxy (Internal)
+Description=SSH WebSocket Proxy
 After=network.target
-
 [Service]
 Type=simple
 ExecStart=/usr/bin/node /opt/ws-proxy/ws-proxy.js
 Restart=always
 RestartSec=5
 User=root
-StandardOutput=journal
-StandardError=journal
 LimitNOFILE=65536
-
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -546,36 +468,29 @@ EOF
     systemctl daemon-reload
     systemctl enable ws-proxy 2>/dev/null || true
     systemctl start ws-proxy 2>/dev/null || true
-
     sleep 3
+
     if systemctl is-active --quiet ws-proxy; then
-        print_success "SSH+WS on internal port 8080 (via Nginx on ports 80 & 443)"
+        print_success "SSH+WS on port 8080"
     else
-        print_warning "WebSocket proxy failed on port 8080, trying 8082..."
-        sed -i 's/const WS_PORT = 8080/const WS_PORT = 8088/' /opt/ws-proxy/ws-proxy.js
+        print_warning "WS proxy failed on 8080, trying 8088..."
+        sed -i 's/8080/8088/' /opt/ws-proxy/ws-proxy.js
         systemctl restart ws-proxy
-        if systemctl is-active --quiet ws-proxy; then
-            print_success "SSH+WS on internal port 8088 (via Nginx on ports 80 & 443)"
-        else
-            print_error "WebSocket proxy failed on all ports"
-        fi
+        systemctl is-active --quiet ws-proxy && print_success "SSH+WS on port 8088" || print_error "WS proxy failed"
     fi
 }
 
 # ============================================================
-# PROTOCOL 4: Dropbear
+# PROTOCOL 4: Dropbear (109, 143)
 # ============================================================
 install_dropbear() {
-    print_info "Installing Dropbear (109, 143)..."
+    print_info "Installing Dropbear..."
     apt install --reinstall -y dropbear 2>/dev/null || apt install -y dropbear
-    
     if [ ! -f /etc/dropbear/dropbear_rsa_host_key ]; then
-        print_info "Generating Dropbear host keys..."
         dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key 2>/dev/null
         dropbearkey -t dss -f /etc/dropbear/dropbear_dss_host_key 2>/dev/null
         dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key 2>/dev/null
     fi
-    
     cat > /etc/default/dropbear <<-DROPBEAR
 NO_START=0
 DROPBEAR_PORT=109
@@ -583,22 +498,10 @@ DROPBEAR_EXTRA_ARGS="-p 143"
 DROPBEAR_BANNER="/etc/ssh/ssh_banner"
 DROPBEAR_RECEIVE_WINDOW=65536
 DROPBEAR
-    
-    echo "/bin/false" >> /etc/shells 2>/dev/null || true
-    echo "/usr/sbin/nologin" >> /etc/shells 2>/dev/null || true
-    
     systemctl enable dropbear 2>/dev/null || true
     systemctl restart dropbear 2>/dev/null || true
-    
     sleep 2
-    if systemctl is-active --quiet dropbear; then
-        print_success "Dropbear on ports 109, 143"
-        ss -tlnp | grep -E ':(109|143)\s' || true
-    else
-        print_error "Dropbear failed to start!"
-        journalctl -u dropbear --no-pager -n 10
-        exit 1
-    fi
+    systemctl is-active --quiet dropbear && print_success "Dropbear on 109, 143" || print_error "Dropbear failed!"
 }
 
 # ============================================================
@@ -609,15 +512,14 @@ install_fail2ban() {
     apt install -y fail2ban 2>/dev/null
     cat > /etc/fail2ban/jail.local <<-F2B
 [DEFAULT]
-findtime  = 600
-bantime   = 3600
-maxretry  = 5
-backend   = polling
+findtime = 600
+bantime  = 3600
+maxretry = 5
+backend  = polling
 [sshd]
-enabled   = true
-port      = ssh,8443,8444,8445,8080
-logpath   = %(sshd_log)s
-maxretry  = 5
+enabled  = true
+port     = ssh,2222,8443,8444,8445,8080
+logpath  = %(sshd_log)s
 F2B
     systemctl enable fail2ban 2>/dev/null || true
     systemctl restart fail2ban 2>/dev/null || true
@@ -625,7 +527,7 @@ F2B
 }
 
 # ============================================================
-# SYSTEM OPTIMIZATION
+# SYSTEM OPTIMIZATION & TORRENT BLOCK
 # ============================================================
 optimize_system() {
     print_info "Optimizing system..."
@@ -642,7 +544,6 @@ fs.file-max = 51200
 SYSCTL
     sysctl -p >/dev/null 2>&1
     if [ ! -f /swapfile ]; then
-        print_info "Creating 512MB swap..."
         fallocate -l 512M /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=512 2>/dev/null
         chmod 600 /swapfile
         mkswap /swapfile 2>/dev/null
@@ -650,46 +551,28 @@ SYSCTL
         echo '/swapfile none swap sw 0 0' >> /etc/fstab
         print_success "Swap created"
     fi
-    print_success "System optimized"
 }
 
-# ============================================================
-# TORRENT BLOCKING
-# ============================================================
 block_torrent() {
-    print_info "Blocking torrent traffic..."
-    iptables -A FORWARD -m string --string "get_peers" --algo bm -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --string "announce_peer" --algo bm -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --string "find_node" --algo bm -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "BitTorrent" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "BitTorrent protocol" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "peer_id=" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string ".torrent" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "announce.php?passkey=" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "torrent" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "announce" -j DROP 2>/dev/null || true
-    iptables -A FORWARD -m string --algo bm --string "info_hash" -j DROP 2>/dev/null || true
+    print_info "Blocking torrent..."
+    iptables -A FORWARD -m string --string "BitTorrent" --algo bm -j DROP 2>/dev/null || true
+    iptables -A FORWARD -m string --string "torrent" --algo bm -j DROP 2>/dev/null || true
+    iptables -A FORWARD -m string --string "announce" --algo bm -j DROP 2>/dev/null || true
     iptables-save > /etc/iptables.up.rules 2>/dev/null || true
-    if command -v netfilter-persistent &> /dev/null; then
-        netfilter-persistent save 2>/dev/null || true
-        netfilter-persistent reload 2>/dev/null || true
-    fi
-    print_success "Torrent traffic blocked"
+    netfilter-persistent save 2>/dev/null || true
 }
 
 # ============================================================
-# DOWNLOAD MANAGEMENT SCRIPTS
+# DOWNLOAD SCRIPTS, STATUS, GUIDE, CRON
+# (same as before)
 # ============================================================
 download_scripts() {
     print_info "Downloading management scripts..."
     GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
     cd /usr/bin
-
-    dl() {
-        wget -q -O "$1" "$GHBASE/$2" && chmod +x "$1" && sed -i 's/\r$//' "$1"
-    }
-
+    dl() { wget -q -O "$1" "$GHBASE/$2" && chmod +x "$1" && sed -i 's/\r$//' "$1"; }
     dl menu menu/menu.sh
+    dl m-xray menu/m-xray.sh
     dl m-sshovpn menu/m-sshovpn.sh
     dl m-vmess menu/m-vmess.sh
     dl m-vless menu/m-vless.sh
@@ -698,7 +581,6 @@ download_scripts() {
     dl m-system menu/m-system.sh
     dl running menu/running.sh
     dl clearcache menu/clearcache.sh
-
     dl usernew ssh/usernew.sh
     dl trial ssh/trial.sh
     dl renew ssh/renew.sh
@@ -713,90 +595,61 @@ download_scripts() {
     dl add-host ssh/add-host.sh
     dl xp ssh/xp.sh
     dl speedtest ssh/speedtest_cli.py
-
     cd /
-    print_success "Management scripts downloaded (line endings fixed)"
+    print_success "Management scripts downloaded"
 }
 
-# ============================================================
-# VPN STATUS SCRIPT
-# ============================================================
 create_vpn_status() {
     cat > /usr/local/bin/vpn-status <<'EOF'
 #!/bin/bash
+svc() { systemctl is-active --quiet "$1" && echo -e "\033[1;32m● Running\033[0m" || echo -e "\033[1;31m● Not Running\033[0m"; }
 echo "═══════════════════════════════════════════════════════════════"
 echo "   MARCSCRIPT SERVICE STATUS"
 echo "═══════════════════════════════════════════════════════════════"
-echo ""
-svc() { systemctl is-active --quiet "$1" && echo -e "\033[1;32m● Running\033[0m" || echo -e "\033[1;31m● Not Running\033[0m"; }
-printf "%-28s : %s\n" "SSH (22)" "$(svc ssh)"
-printf "%-28s : %s\n" "Dropbear (109, 143)" "$(svc dropbear)"
+printf "%-28s : %s\n" "SSH (22, 2222)" "$(svc ssh)"
+printf "%-28s : %s\n" "Dropbear (109,143)" "$(svc dropbear)"
 printf "%-28s : %s\n" "Stunnel4 (8443-8445)" "$(svc stunnel4)"
 printf "%-28s : %s\n" "WS-Proxy (8080)" "$(svc ws-proxy)"
-printf "%-28s : %s\n" "Nginx Proxy" "$(svc nginx)"
-printf "%-28s : %s\n" "Xray" "$(svc xray)"
 printf "%-28s : %s\n" "Fail2Ban" "$(svc fail2ban)"
-[ -f /etc/systemd/system/ws-dropbear.service ] && printf "%-28s : %s\n" "WS-Dropbear (2095)" "$(svc ws-dropbear)"
-[ -f /etc/systemd/system/ws-stunnel.service ] && printf "%-28s : %s\n" "WS-Stunnel (700)" "$(svc ws-stunnel)"
-[ -f /etc/systemd/system/squid.service ] && printf "%-28s : %s\n" "Squid Proxy" "$(svc squid)"
-echo ""
 echo "═══════════════════════════════════════════════════════════════"
-echo "  VPS IP: $(curl -s ifconfig.me 2>/dev/null || echo 'unknown')"
-echo "  Proxy: Nginx reverse proxy (ports 80 & 443)"
-echo "═══════════════════════════════════════════════════════════════"
+echo "  IP: $(curl -s ifconfig.me 2>/dev/null || echo 'unknown')"
 EOF
     chmod +x /usr/local/bin/vpn-status
-    print_success "vpn-status created"
 }
 
-# ============================================================
-# CONNECTION GUIDE
-# ============================================================
 create_guide() {
     VPS_IP=$(curl -s ifconfig.me 2>/dev/null || echo "YOUR_VPS_IP")
     cat > /root/ssh-connection-guide.txt <<EOF
-===========================================
-MARCSCRIPT SSH VPN CONNECTION GUIDE
-===========================================
+=====================================
+MARCSCRIPT SSH VPN GUIDE
+=====================================
 Server IP: $VPS_IP
 
-IMPORTANT: All services go through Nginx reverse proxy
-           on ports 80 (HTTP) and 443 (HTTPS/SSL)
-
 PROTOCOLS:
-1. SSH Direct        : $VPS_IP:22
-2. SSH + SSL         : $VPS_IP:443 (via Nginx → Stunnel 8443)
-3. SSH + WebSocket   : ws://$VPS_IP:80/ssh-ws
-4. SSH + WS + SSL    : wss://$VPS_IP:443/ssh-ws-ssl
-5. Dropbear SSH      : $VPS_IP:109, 143
+  SSH Direct    : $VPS_IP:22, 2222
+  SSH + SSL     : $VPS_IP:8443, 8444
+  SSH + WS      : ws://$VPS_IP:8080
+  SSH + WS + SSL: wss://$VPS_IP:8445
+  Dropbear      : $VPS_IP:109, 143
 
-XRAY PROTOCOLS (via Nginx):
-6. VMess WS (NTLS)   : $VPS_IP:80/vmess
-7. VMess WS (TLS)    : $VPS_IP:443/vmess
-8. VLESS WS (NTLS)   : $VPS_IP:80/vless
-9. VLESS WS (TLS)    : $VPS_IP:443/vless
-10. Trojan WS         : $VPS_IP:443/trojan-ws
-11. VLESS gRPC        : $VPS_IP:443/vless-grpc
-12. VMess gRPC        : $VPS_IP:443/vmess-grpc
+XRAY (via Nginx):
+  VMess WS      : $VPS_IP:80/vmess
+  VMess WS TLS  : $VPS_IP:443/vmess
+  VLESS WS TLS  : $VPS_IP:443/vless
+  gRPC          : $VPS_IP:443 (vless-grpc, etc.)
 
-PROXY (via insshws.sh):
-13. Squid Proxy       : $VPS_IP:3128, 8082, 8888
-14. BADVPN UDP        : 127.0.0.1:7100-7400 (local)
+PROXY (run insshws.sh):
+  Squid         : $VPS_IP:3128, 8082, 8888
+  BADVPN UDP    : 127.0.0.1:7100-7400
 
-MANAGEMENT:
-- Type 'menu' to access management panel
-- Type 'vpn-status' to check services
-- Type 'nginx-proxy status' to check Nginx proxy
-===========================================
+DNSTT:
+  DNS Tunnel    : UDP 5300 → SSH 2222
+=====================================
 EOF
     print_success "Guide saved to /root/ssh-connection-guide.txt"
 }
 
-# ============================================================
-# CRON SETUP
-# ============================================================
 setup_cron() {
-    print_info "Setting up cron (daily reboot)..."
     cat > /etc/cron.d/re_otm <<-END
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
@@ -804,103 +657,58 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 END
     echo "7" > /home/re_otm
     systemctl restart cron 2>/dev/null || true
-    print_success "Cron jobs configured"
 }
 
-# ============================================================
-# RESTART SERVICES
-# ============================================================
 restart_services() {
     print_info "Restarting all services..."
-    for svc in cron ssh dropbear stunnel4 ws-proxy fail2ban; do
-        if systemctl list-unit-files | grep -q "^${svc}.service"; then
-            systemctl restart $svc 2>/dev/null && print_success "Restarted $svc"
-        fi
+    for svc in ssh dropbear stunnel4 ws-proxy fail2ban; do
+        systemctl restart $svc 2>/dev/null && print_success "Restarted $svc"
     done
 }
 
-# ============================================================
-# CLEANUP
-# ============================================================
 cleanup() {
-    print_info "Cleaning up..."
     apt autoclean -y 2>/dev/null || true
     apt autoremove -y 2>/dev/null || true
     history -c
     echo "unset HISTFILE" >> /etc/profile
     rm -f /root/key.pem /root/cert.pem /root/ssh-vpn.sh /root/bbr.sh 2>/dev/null
-    print_success "Cleanup completed"
 }
 
-# ============================================================
-# DISPLAY FINAL STATUS
-# ============================================================
 display_final_status() {
     VPS_IP=$(curl -s ifconfig.me 2>/dev/null || echo "YOUR_VPS_IP")
     clear
     echo ""
     echo "═══════════════════════════════════════════════════════════════"
-    echo "   ✅ MARCSCRIPT SSH-VPN INSTALLATION COMPLETE!"
+    echo "   ✅ MARCSCRIPT SSH-VPN INSTALLED (OLD PORTS)"
     echo "═══════════════════════════════════════════════════════════════"
     echo ""
-    echo "📡 ALL PROTOCOLS ACTIVE:"
+    echo "📡 PROTOCOLS:"
+    echo "   SSH Direct      : $VPS_IP:22, 2222"
+    echo "   SSH + SSL       : $VPS_IP:8443, 8444"
+    echo "   SSH + WS        : ws://$VPS_IP:8080"
+    echo "   SSH + WS + SSL  : wss://$VPS_IP:8445"
+    echo "   Dropbear        : $VPS_IP:109, 143"
     echo ""
-    echo "   🔹 SSH Direct      : $VPS_IP:22"
-    echo "   🔹 SSH + SSL       : $VPS_IP:443 (via Nginx → Stunnel)"
-    echo "   🔹 SSH + WS        : ws://$VPS_IP:80/ssh-ws"
-    echo "   🔹 SSH + WS + SSL  : wss://$VPS_IP:443/ssh-ws-ssl"
-    echo "   🔹 Dropbear SSH    : $VPS_IP:109, 143"
+    echo "📌 Nginx (run nginx-setup.sh) handles Xray on 80/443"
+    echo "📌 DNSTT (run install-dnstt.sh) uses SSH port 2222"
     echo ""
-    echo "   📌 Port 80 & 443 are managed by Nginx reverse proxy"
-    echo "   📌 Run nginx-setup.sh to configure Nginx"
-    echo "   📌 Run insshws.sh for Squid proxy & BADVPN"
-    echo "   📌 Run ins-xray.sh for Xray installation"
-    echo ""
-    echo "🔧 MANAGEMENT COMMANDS:"
-    echo "   menu              - Main management panel"
-    echo "   vpn-status        - Check all services"
-    echo "   usernew           - Create SSH user"
-    echo "   trial             - Create trial user"
-    echo "   cek               - Check user accounts"
-    echo ""
-    echo "📁 CONFIGURATION FILES:"
-    echo "   SSH Config       : /etc/ssh/sshd_config"
-    echo "   Stunnel Config   : /etc/stunnel/stunnel.conf"
-    echo "   WS Proxy         : /opt/ws-proxy/ws-proxy.js"
-    echo "   Dropbear Config  : /etc/default/dropbear"
-    echo ""
-    echo "📋 LOG FILES:"
-    echo "   SSH Logs         : journalctl -u ssh"
-    echo "   Dropbear Logs    : journalctl -u dropbear"
-    echo "   Stunnel Logs     : /var/log/stunnel4/stunnel.log"
-    echo "   WS Proxy Logs    : /var/log/ws-proxy.log"
+    echo "🔧 Commands: menu, vpn-status, usernew, trial, cek"
     echo ""
     echo "═══════════════════════════════════════════════════════════════"
-    echo "  💡 VPS IP: $VPS_IP"
-    echo "  💡 Guide saved: /root/ssh-connection-guide.txt"
-    echo "  💡 Rollback System: /root/vpn-rollback.sh"
-    echo "  💡 Next: Run nginx-setup.sh for reverse proxy"
+    echo "  Rollback: /root/vpn-rollback.sh"
+    echo "  Guide:   /root/ssh-connection-guide.txt"
     echo "═══════════════════════════════════════════════════════════════"
-    echo ""
 }
 
-# ============================================================
-# MAIN
-# ============================================================
 main() {
     clear
     echo "==========================================="
     echo "   MARCSCRIPT SSH VPN INSTALLER"
-    echo "   (SSH/Dropbear/Stunnel/WS Proxy)"
+    echo "   (Old Direct Ports – DNSTT Ready)"
     echo "==========================================="
-    echo ""
-    echo "   NOTE: Nginx, Squid, BADVPN moved to:"
-    echo "   - nginx-setup.sh (Nginx reverse proxy)"
-    echo "   - insshws.sh (Proxy + BADVPN)"
-    echo ""
     read -p "Continue? (y/N): " -n 1 -r
     echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then exit 0; fi
+    [[ ! $REPLY =~ ^[Yy]$ ]] && exit 0
 
     detect_os
     setup_environment
@@ -922,12 +730,8 @@ main() {
     cleanup
     display_final_status
 
-    print_success "Installation completed successfully!"
-    print_info "Next steps:"
-    print_info "  1. Run nginx-setup.sh for reverse proxy"
-    print_info "  2. Run insshws.sh for Squid proxy & BADVPN"
-    print_info "  3. Run ins-xray.sh for Xray core"
-    print_info "Type 'menu' to access the management panel"
+    print_success "Installation complete!"
+    print_info "Next: nginx-setup.sh → insshws.sh → ins-xray.sh → install-dnstt.sh"
 }
 
 main "$@"
