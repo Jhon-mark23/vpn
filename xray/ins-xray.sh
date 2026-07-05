@@ -1,12 +1,16 @@
 #!/bin/bash
 # ============================================================
-# INS-XRAY.SH - Install Xray (No Certificate Handling)
+# INS-XRAY.SH - Install Xray Core Only
 # ============================================================
 # Prerequisites:
 #   - Domain in /root/domain
 #   - Certificate should exist, but a self-signed fallback is
 #     created automatically if missing.
-#   - Nginx installed (for reverse proxy)
+#   - Nginx reverse proxy handled by nginx-setup.sh
+# ============================================================
+# UPDATED: Removed all Nginx config (now in nginx-setup.sh)
+#          Xray listens on internal ports only (127.0.0.1)
+#          All external traffic via Nginx reverse proxy
 # ============================================================
 
 MYIP=$(wget -qO- ipv4.icanhazip.com)
@@ -81,6 +85,7 @@ if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
     # Double-check after attempt
     if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
         echo -e "[ ${red}ERROR${NC} ] Failed to provide a certificate. Xray will start but may not work correctly."
+        echo -e "[ ${yell}WARNING${NC} ] Certificate needed for Nginx SSL (run nginx-setup.sh later)"
     fi
 fi
 
@@ -143,7 +148,10 @@ fi
 # ---- Generate UUID ----
 uuid=$(cat /proc/sys/kernel/random/uuid)
 
-# ---- Xray config ----
+# ---- Xray config (ALL internal ports - Nginx proxies from 80/443) ----
+echo -e "[ ${green}INFO${NC} ] Creating Xray configuration (internal ports)..."
+echo -e "[ ${green}INFO${NC} ] External access via Nginx reverse proxy (nginx-setup.sh)"
+
 cat > /etc/xray/config.json << END
 {
   "log" : {
@@ -152,7 +160,7 @@ cat > /etc/xray/config.json << END
     "loglevel": "warning"
   },
   "inbounds": [
-      {
+    {
       "listen": "127.0.0.1",
       "port": 10085,
       "protocol": "dokodemo-door",
@@ -161,168 +169,168 @@ cat > /etc/xray/config.json << END
       },
       "tag": "api"
     },
-   {
-     "listen": "127.0.0.1",
-     "port": "14016",
-     "protocol": "vless",
-      "settings": {
-          "decryption":"none",
-            "clients": [
-               {
-                 "id": "${uuid}"
-#vless
-             }
-          ]
-       },
-       "streamSettings":{
-         "network": "ws",
-            "wsSettings": {
-                "path": "/vless"
-          }
-        }
-     },
-     {
-     "listen": "127.0.0.1",
-     "port": "23456",
-     "protocol": "vmess",
-      "settings": {
-            "clients": [
-               {
-                 "id": "${uuid}",
-                 "alterId": 0
-#vmess
-             }
-          ]
-       },
-       "streamSettings":{
-         "network": "ws",
-            "wsSettings": {
-                "path": "/vmess"
-          }
-        }
-     },
     {
       "listen": "127.0.0.1",
-      "port": "25432",
-      "protocol": "trojan",
+      "port": 14016,
+      "protocol": "vless",
       "settings": {
-          "decryption":"none",
-           "clients": [
-              {
-                 "password": "${uuid}"
-#trojanws
-              }
-          ],
-         "udp": true
-       },
-       "streamSettings":{
-           "network": "ws",
-           "wsSettings": {
-               "path": "/trojan-ws"
-            }
-         }
-     },
-    {
-         "listen": "127.0.0.1",
-        "port": "30300",
-        "protocol": "shadowsocks",
-        "settings": {
-           "clients": [
-           {
-           "method": "aes-128-gcm",
-          "password": "${uuid}"
-#ssws
-           }
-          ],
-          "network": "tcp,udp"
-       },
-       "streamSettings":{
-          "network": "ws",
-             "wsSettings": {
-               "path": "/ss-ws"
-           }
-        }
-     },
-      {
-        "listen": "127.0.0.1",
-     "port": "24456",
-        "protocol": "vless",
-        "settings": {
-         "decryption":"none",
-           "clients": [
-             {
-               "id": "${uuid}"
-#vlessgrpc
-             }
-          ]
-       },
-          "streamSettings":{
-             "network": "grpc",
-             "grpcSettings": {
-                "serviceName": "vless-grpc"
-           }
-        }
-     },
-     {
-      "listen": "127.0.0.1",
-     "port": "31234",
-     "protocol": "vmess",
-      "settings": {
-            "clients": [
-               {
-                 "id": "${uuid}",
-                 "alterId": 0
-#vmessgrpc
-             }
-          ]
-       },
-       "streamSettings":{
-         "network": "grpc",
-            "grpcSettings": {
-                "serviceName": "vmess-grpc"
-          }
-        }
-     },
-     {
-        "listen": "127.0.0.1",
-     "port": "33456",
-        "protocol": "trojan",
-        "settings": {
-          "decryption":"none",
-             "clients": [
-               {
-                 "password": "${uuid}"
-#trojangrpc
-               }
-           ]
-        },
-         "streamSettings":{
-         "network": "grpc",
-           "grpcSettings": {
-               "serviceName": "trojan-grpc"
-         }
-      }
-   },
-   {
-    "listen": "127.0.0.1",
-    "port": "30310",
-    "protocol": "shadowsocks",
-    "settings": {
+        "decryption":"none",
         "clients": [
           {
-             "method": "aes-128-gcm",
-             "password": "${uuid}"
-#ssgrpc
-           }
-         ],
-           "network": "tcp,udp"
-      },
-    "streamSettings":{
-     "network": "grpc",
-        "grpcSettings": {
-           "serviceName": "ss-grpc"
+            "id": "${uuid}"
+#vless
           }
-       }
+        ]
+      },
+      "streamSettings":{
+        "network": "ws",
+        "wsSettings": {
+          "path": "/vless"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 23456,
+      "protocol": "vmess",
+      "settings": {
+        "clients": [
+          {
+            "id": "${uuid}",
+            "alterId": 0
+#vmess
+          }
+        ]
+      },
+      "streamSettings":{
+        "network": "ws",
+        "wsSettings": {
+          "path": "/vmess"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 25432,
+      "protocol": "trojan",
+      "settings": {
+        "decryption":"none",
+        "clients": [
+          {
+            "password": "${uuid}"
+#trojanws
+          }
+        ],
+        "udp": true
+      },
+      "streamSettings":{
+        "network": "ws",
+        "wsSettings": {
+          "path": "/trojan-ws"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 30300,
+      "protocol": "shadowsocks",
+      "settings": {
+        "clients": [
+          {
+            "method": "aes-128-gcm",
+            "password": "${uuid}"
+#ssws
+          }
+        ],
+        "network": "tcp,udp"
+      },
+      "streamSettings":{
+        "network": "ws",
+        "wsSettings": {
+          "path": "/ss-ws"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 24456,
+      "protocol": "vless",
+      "settings": {
+        "decryption":"none",
+        "clients": [
+          {
+            "id": "${uuid}"
+#vlessgrpc
+          }
+        ]
+      },
+      "streamSettings":{
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "vless-grpc"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 31234,
+      "protocol": "vmess",
+      "settings": {
+        "clients": [
+          {
+            "id": "${uuid}",
+            "alterId": 0
+#vmessgrpc
+          }
+        ]
+      },
+      "streamSettings":{
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "vmess-grpc"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 33456,
+      "protocol": "trojan",
+      "settings": {
+        "decryption":"none",
+        "clients": [
+          {
+            "password": "${uuid}"
+#trojangrpc
+          }
+        ]
+      },
+      "streamSettings":{
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "trojan-grpc"
+        }
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 30310,
+      "protocol": "shadowsocks",
+      "settings": {
+        "clients": [
+          {
+            "method": "aes-128-gcm",
+            "password": "${uuid}"
+#ssgrpc
+          }
+        ],
+        "network": "tcp,udp"
+      },
+      "streamSettings":{
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "ss-grpc"
+        }
+      }
     }
   ],
   "outbounds": [
@@ -398,12 +406,17 @@ cat > /etc/xray/config.json << END
 }
 END
 
+# ---- Save UUID for management scripts ----
+echo "$uuid" > /etc/xray/uuid
+echo -e "[ ${green}INFO${NC} ] UUID saved to /etc/xray/uuid"
+
+# ---- Systemd service for Xray ----
 rm -rf /etc/systemd/system/xray.service.d
 rm -rf /etc/systemd/system/xray@.service
 
 cat <<EOF> /etc/systemd/system/xray.service
 [Unit]
-Description=Xray Service
+Description=Xray Service (Internal Ports - Nginx Reverse Proxy)
 Documentation=https://github.com/xtls
 After=network.target nss-lookup.target
 
@@ -422,9 +435,10 @@ LimitNOFILE=51200
 WantedBy=multi-user.target
 EOF
 
+# ---- Helper service for /run/xray permissions ----
 cat > /etc/systemd/system/runn.service <<EOF
 [Unit]
-Description=Mantap-Sayang
+Description=Xray Runtime Directory Setup
 After=network.target
 
 [Service]
@@ -437,195 +451,39 @@ Restart=on-abort
 WantedBy=multi-user.target
 EOF
 
-# ---- Nginx Config (with maximum TLS compatibility) ----
-echo -e "[ ${green}INFO${NC} ] Creating nginx configuration..."
-
-cat > /etc/nginx/conf.d/xray.conf <<'EOF'
-server {
-    listen 81;
-    server_name _;
-    root /home/vps/public_html;
-    index index.html;
-}
-
-server {
-    listen 80;
-    listen [::]:80;
-    server_name *.$domain;
-    root /home/vps/public_html;
-
-    location = /vmess {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:23456;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-    }
-    location = /vless {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:14016;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-    }
-    location = /trojan-ws {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:25432;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-    }
-    location = /ss-ws {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:30300;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-    }
-    location / {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:2095;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-    }
-}
-
-server {
-    listen 443 ssl reuseport;
-    listen [::]:443 ssl reuseport;
-    http2 on;
-    server_name *.$domain;
-    ssl_certificate /etc/xray/xray.crt;
-    ssl_certificate_key /etc/xray/xray.key;
-    # Wide cipher/protocol list for old Android/VPN apps
-    ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
-    ssl_ciphers DEFAULT:!aNULL:!eNULL:!LOW:!MD5:!EXP:!RC4;
-    root /home/vps/public_html;
-
-    location = /vmess {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:23456;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-    }
-    location = /vless {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:14016;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-    }
-    location = /trojan-ws {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:25432;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-    }
-    location = /ss-ws {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:30300;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-    }
-
-    location ^~ /vless-grpc {
-        proxy_redirect off;
-        grpc_set_header X-Real-IP $remote_addr;
-        grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        grpc_set_header Host $http_host;
-        grpc_pass grpc://127.0.0.1:24456;
-    }
-    location ^~ /vmess-grpc {
-        proxy_redirect off;
-        grpc_set_header X-Real-IP $remote_addr;
-        grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        grpc_set_header Host $http_host;
-        grpc_pass grpc://127.0.0.1:31234;
-    }
-    location ^~ /trojan-grpc {
-        proxy_redirect off;
-        grpc_set_header X-Real-IP $remote_addr;
-        grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        grpc_set_header Host $http_host;
-        grpc_pass grpc://127.0.0.1:33456;
-    }
-    location ^~ /ss-grpc {
-        proxy_redirect off;
-        grpc_set_header X-Real-IP $remote_addr;
-        grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        grpc_set_header Host $http_host;
-        grpc_pass grpc://127.0.0.1:30310;
-    }
-
-    location / {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:700;
-        proxy_http_version 1.1;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-    }
-}
+# ---- Save Xray ports info for nginx-setup.sh ----
+cat > /etc/xray/ports.conf <<EOF
+# Xray Internal Ports - Used by nginx-setup.sh
+XRAY_VLESS_WS=14016
+XRAY_VMESS_WS=23456
+XRAY_TROJAN_WS=25432
+XRAY_SS_WS=30300
+XRAY_VLESS_GRPC=24456
+XRAY_VMESS_GRPC=31234
+XRAY_TROJAN_GRPC=33456
+XRAY_SS_GRPC=30310
+XRAY_API=10085
 EOF
+echo -e "[ ${green}INFO${NC} ] Port mapping saved to /etc/xray/ports.conf"
 
-sed -i "s/\\\$domain/$domain/g" /etc/nginx/conf.d/xray.conf
+# ---- Note about Nginx ----
+echo -e "[ ${yell}NOTE${NC} ] Nginx configuration is now handled by nginx-setup.sh"
+echo -e "[ ${yell}NOTE${NC} ] Run nginx-setup.sh after this script to configure reverse proxy"
 
 # ---- Restart services ----
-echo -e "[ ${green}INFO${NC} ] Restarting all services"
+echo -e "[ ${green}INFO${NC} ] Restarting Xray service"
 systemctl daemon-reload
 
 systemctl enable xray 2>/dev/null || true
 systemctl restart xray
 check_success "Xray service restart"
 
-nginx -t 2>/dev/null
-if [ $? -eq 0 ]; then
-    systemctl restart nginx
-    check_success "Nginx restart"
-else
-    echo -e "[ ${red}ERROR${NC} ] Nginx configuration test failed!"
-    echo -e "[ ${yell}WARNING${NC} ] Please check: nginx -t"
-fi
-
 systemctl enable runn 2>/dev/null || true
 systemctl restart runn 2>/dev/null || true
 
 # ---- Download management scripts (with CRLF fix) ----
 cd /usr/bin/
-echo -e "[ ${green}INFO${NC} ] Downloading management scripts..."
+echo -e "[ ${green}INFO${NC} ] Downloading Xray management scripts..."
 
 # Helper to download, fix line endings and make executable
 dl() {
@@ -658,23 +516,100 @@ dl del-ssws       "$BASE/del-ssws.sh"
 dl renew-ssws     "$BASE/renew-ssws.sh"
 dl cek-ssws       "$BASE/cek-ssws.sh"
 
-# Move domain file
+# ---- Create xray-info command ----
+cat > /usr/local/bin/xray-info <<'XRAYINFO'
+#!/bin/bash
+# Xray Information Script
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+echo "═══════════════════════════════════════════════════════════════"
+echo "   XRAY SERVICE INFORMATION"
+echo "═══════════════════════════════════════════════════════════════"
+echo ""
+
+# Service status
+if systemctl is-active --quiet xray; then
+    echo -e "   Status: ${GREEN}● Running${NC}"
+else
+    echo -e "   Status: ${YELLOW}● Not Running${NC}"
+fi
+
+# UUID
+if [ -f /etc/xray/uuid ]; then
+    echo -e "   UUID: ${CYAN}$(cat /etc/xray/uuid)${NC}"
+fi
+
+# Internal ports
+echo ""
+echo "   Internal Ports (via Nginx reverse proxy):"
+echo "   ┌─────────────────────────────────────────────┐"
+echo "   │ VLESS WS    : 14016  → /vless               │"
+echo "   │ VMess WS    : 23456  → /vmess               │"
+echo "   │ Trojan WS   : 25432  → /trojan-ws           │"
+echo "   │ SS WS       : 30300  → /ss-ws               │"
+echo "   │ VLESS gRPC  : 24456  → /vless-grpc          │"
+echo "   │ VMess gRPC  : 31234  → /vmess-grpc          │"
+echo "   │ Trojan gRPC : 33456  → /trojan-grpc         │"
+echo "   │ SS gRPC     : 30310  → /ss-grpc             │"
+echo "   │ API         : 10085  (internal)             │"
+echo "   └─────────────────────────────────────────────┘"
+
+echo ""
+echo "   Logs:"
+echo "   ├── Access: /var/log/xray/access.log"
+echo "   ├── Error:  /var/log/xray/error.log"
+echo "   └── Journal: journalctl -u xray -f"
+
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+XRAYINFO
+chmod +x /usr/local/bin/xray-info
+
+# ---- Move domain file ----
 mv /root/domain /etc/xray/ 2>/dev/null || true
 [ -f /root/scdomain ] && rm /root/scdomain > /dev/null 2>&1
 
-# Final verification
+# ---- Final verification ----
 sleep 2
+echo ""
+echo -e "${green}═══════════════════════════════════════════════════════════════${NC}"
+
 if systemctl is-active --quiet xray; then
-    echo -e "[ ${green}✓${NC} ] Xray is running"
+    echo -e "[ ${green}✓${NC} ] Xray is running on internal ports"
 else
     echo -e "[ ${red}✗${NC} ] Xray is not running. Check: journalctl -u xray"
 fi
-if systemctl is-active --quiet nginx; then
-    echo -e "[ ${green}✓${NC} ] Nginx is running"
+
+# Check if Nginx is running (informational only)
+if systemctl is-active --quiet nginx 2>/dev/null; then
+    echo -e "[ ${green}✓${NC} ] Nginx is running (ready for reverse proxy)"
 else
-    echo -e "[ ${red}✗${NC} ] Nginx is not running. Check: journalctl -u nginx"
+    echo -e "[ ${yell}!${NC} ] Nginx not running. Run: nginx-setup.sh"
 fi
 
-clear
+echo -e "${green}═══════════════════════════════════════════════════════════════${NC}"
+echo ""
+echo -e "${green}Xray core installation complete!${NC}"
+echo ""
+echo -e "${yell}╔═══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${yell}║  NEXT STEP: Run nginx-setup.sh to configure reverse proxy  ║${NC}"
+echo -e "${yell}╚═══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "   Commands:"
+echo -e "   ├── xray-info       - View Xray configuration"
+echo -e "   ├── add-ws          - Add VMess user"
+echo -e "   ├── add-vless       - Add VLESS user"
+echo -e "   ├── add-tr          - Add Trojan user"
+echo -e "   └── add-ssws        - Add Shadowsocks user"
+echo ""
+echo -e "   Config: /etc/xray/config.json"
+echo -e "   UUID:   /etc/xray/uuid"
+echo -e "   Ports:  /etc/xray/ports.conf"
+echo ""
+
+# Clean up
 rm -f ins-xray.sh
-echo -e "${green}Xray installation complete!${NC}"
