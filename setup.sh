@@ -179,7 +179,6 @@ secure_ssh() {
 
 # Ports
 Port 22
-Port 2222
 Port 2269
 
 # Authentication - Password auth enabled for remote access
@@ -213,7 +212,7 @@ EOF
     # Restart SSH
     systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     
-    print_success "SSH secured on ports 22, 2222, 2269"
+    print_success "SSH secured on ports 22, 2269"
 }
 
 # ============================================================
