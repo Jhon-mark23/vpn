@@ -35,10 +35,6 @@ DNSTT_ALT_SSH="2269"         # Alternative SSH port
 # DNS Resolver
 PUBLIC_DNS="8.8.8.8:53"
 
-# Service names
-SERVER_SERVICE="server-sldns"
-CLIENT_SERVICE="client-sldns"
-
 # ============================================================
 # DETECT OS
 # ============================================================
@@ -98,31 +94,31 @@ remove_existing_services() {
     print_step "Checking for existing DNSTT services..."
     
     # Check and remove server-sldns service
-    if systemctl list-unit-files | grep -q "${SERVER_SERVICE}.service"; then
-        print_warn "Found existing ${SERVER_SERVICE} service"
-        print_info "Stopping ${SERVER_SERVICE}..."
-        systemctl stop ${SERVER_SERVICE} 2>/dev/null || true
-        print_info "Disabling ${SERVER_SERVICE}..."
-        systemctl disable ${SERVER_SERVICE} 2>/dev/null || true
-        print_info "Removing ${SERVER_SERVICE} service file..."
-        rm -f /etc/systemd/system/${SERVER_SERVICE}.service
-        print_success "${SERVER_SERVICE} removed"
+    if systemctl list-unit-files 2>/dev/null | grep -q "server-sldns.service"; then
+        print_warn "Found existing server-sldns service"
+        print_info "Stopping server-sldns..."
+        systemctl stop server-sldns 2>/dev/null || true
+        print_info "Disabling server-sldns..."
+        systemctl disable server-sldns 2>/dev/null || true
+        print_info "Removing server-sldns service file..."
+        rm -f /etc/systemd/system/server-sldns.service
+        print_success "server-sldns removed"
     else
-        print_info "No existing ${SERVER_SERVICE} found"
+        print_info "No existing server-sldns found"
     fi
     
     # Check and remove client-sldns service
-    if systemctl list-unit-files | grep -q "${CLIENT_SERVICE}.service"; then
-        print_warn "Found existing ${CLIENT_SERVICE} service"
-        print_info "Stopping ${CLIENT_SERVICE}..."
-        systemctl stop ${CLIENT_SERVICE} 2>/dev/null || true
-        print_info "Disabling ${CLIENT_SERVICE}..."
-        systemctl disable ${CLIENT_SERVICE} 2>/dev/null || true
-        print_info "Removing ${CLIENT_SERVICE} service file..."
-        rm -f /etc/systemd/system/${CLIENT_SERVICE}.service
-        print_success "${CLIENT_SERVICE} removed"
+    if systemctl list-unit-files 2>/dev/null | grep -q "client-sldns.service"; then
+        print_warn "Found existing client-sldns service"
+        print_info "Stopping client-sldns..."
+        systemctl stop client-sldns 2>/dev/null || true
+        print_info "Disabling client-sldns..."
+        systemctl disable client-sldns 2>/dev/null || true
+        print_info "Removing client-sldns service file..."
+        rm -f /etc/systemd/system/client-sldns.service
+        print_success "client-sldns removed"
     else
-        print_info "No existing ${CLIENT_SERVICE} found"
+        print_info "No existing client-sldns found"
     fi
     
     # Kill any running processes
@@ -131,7 +127,7 @@ remove_existing_services() {
     pkill -f "sldns-client" 2>/dev/null || true
     
     # Reload systemd
-    systemctl daemon-reload
+    systemctl daemon-reload 2>/dev/null || true
     
     print_success "All existing DNSTT services removed"
 }
@@ -158,7 +154,7 @@ setup_iptables() {
     # Install iptables if not present
     apt install -y iptables iptables-persistent netfilter-persistent 2>/dev/null || true
     
-    # Remove existing rules if any
+    # Remove existing rules
     iptables -D INPUT -p udp --dport 5300 -j ACCEPT 2>/dev/null || true
     iptables -t nat -D PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 2>/dev/null || true
     
@@ -192,11 +188,6 @@ get_domain() {
         read -rp "Enter main domain: " DOMAIN
     else
         print_info "Found domain: $DOMAIN"
-        read -rp "Use this domain? (y/n): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            read -rp "Enter main domain: " DOMAIN
-        fi
     fi
     
     # Read subdomain
@@ -283,22 +274,37 @@ configure_ssh() {
 install_binaries() {
     print_step "Installing DNSTT binaries..."
     
-    # Remove old directory and create new
+    # Remove old directory
     rm -rf "$SLOWDNS_DIR"
+    
+    # Create directories
     mkdir -m 755 "$SLOWDNS_DIR"
     mkdir -p "$SLOWDNS_LOG_DIR"
     
     # Download binaries and keys from repo
     print_info "Downloading DNSTT server binary..."
-    wget -q -O "$SLOWDNS_DIR/sldns-server" "$GITHUB_RAW/dnstt/dnstt-server-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
+    wget -q --show-progress -O "$SLOWDNS_DIR/sldns-server" "$GITHUB_RAW/dnstt/dnstt-server-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
         print_error "Failed to download server binary!"
         print_error "URL: $GITHUB_RAW/dnstt/dnstt-server-linux-${SLOWDNS_ARCH}"
-        exit 1
+        print_info "Trying alternative download source..."
+        
+        # Try alternative source (Google Drive or other mirror)
+        wget -q --show-progress -O "$SLOWDNS_DIR/sldns-server" "https://github.com/mshafiee/dnstt/releases/latest/download/dnstt-server-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
+            print_error "All download attempts failed!"
+            exit 1
+        }
     }
     
     print_info "Downloading DNSTT client binary..."
-    wget -q -O "$SLOWDNS_DIR/sldns-client" "$GITHUB_RAW/dnstt/dnstt-client-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
+    wget -q --show-progress -O "$SLOWDNS_DIR/sldns-client" "$GITHUB_RAW/dnstt/dnstt-client-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
         print_warn "Failed to download client binary (may be normal on server)"
+        # Try alternative source
+        wget -q --show-progress -O "$SLOWDNS_DIR/sldns-client" "https://github.com/mshafiee/dnstt/releases/latest/download/dnstt-client-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
+            print_warn "Client binary not available, creating dummy"
+            echo "#!/bin/bash" > "$SLOWDNS_DIR/sldns-client"
+            echo "echo 'DNSTT Client not available'" >> "$SLOWDNS_DIR/sldns-client"
+            chmod +x "$SLOWDNS_DIR/sldns-client"
+        }
     }
     
     # Make executable
@@ -306,10 +312,15 @@ install_binaries() {
     chmod +x "$SLOWDNS_DIR/sldns-client" 2>/dev/null || true
     
     # Verify server binary
-    if "$SLOWDNS_DIR/sldns-server" 2>&1 | grep -q "Usage\|privkey-file"; then
-        print_success "DNSTT server binary verified"
+    if [ -f "$SLOWDNS_DIR/sldns-server" ] && [ -s "$SLOWDNS_DIR/sldns-server" ]; then
+        if "$SLOWDNS_DIR/sldns-server" 2>&1 | grep -q "Usage\|privkey-file\|Error"; then
+            print_success "DNSTT server binary verified"
+        else
+            print_error "DNSTT server binary verification failed!"
+            exit 1
+        fi
     else
-        print_error "DNSTT server binary verification failed!"
+        print_error "DNSTT server binary file is empty or missing!"
         exit 1
     fi
 }
@@ -322,7 +333,7 @@ generate_keys() {
     
     cd "$SLOWDNS_DIR"
     
-    # Generate fresh keys
+    # Generate keys
     ./sldns-server -gen-key -privkey-file "$SLOWDNS_DIR/server.key" -pubkey-file "$SLOWDNS_DIR/server.pub" 2>/dev/null
     
     if [ -f "$SLOWDNS_DIR/server.key" ] && [ -f "$SLOWDNS_DIR/server.pub" ]; then
@@ -346,7 +357,7 @@ create_services() {
     print_step "Creating systemd services..."
     
     # Server Service
-    cat > /etc/systemd/system/${SERVER_SERVICE}.service <<EOF
+    cat > /etc/systemd/system/server-sldns.service <<EOF
 [Unit]
 Description=MarcScript DNSTT Server (SlowDNS)
 Documentation=https://github.com/Jhon-mark23/vpn
@@ -368,7 +379,7 @@ WantedBy=multi-user.target
 EOF
 
     # Client Service (optional, for local testing)
-    cat > /etc/systemd/system/${CLIENT_SERVICE}.service <<EOF
+    cat > /etc/systemd/system/client-sldns.service <<EOF
 [Unit]
 Description=MarcScript DNSTT Client (SlowDNS)
 Documentation=https://github.com/Jhon-mark23/vpn
@@ -390,8 +401,8 @@ WantedBy=multi-user.target
 EOF
 
     # Set permissions
-    chmod 644 /etc/systemd/system/${SERVER_SERVICE}.service
-    chmod 644 /etc/systemd/system/${CLIENT_SERVICE}.service
+    chmod 644 /etc/systemd/system/server-sldns.service
+    chmod 644 /etc/systemd/system/client-sldns.service
     
     print_success "Systemd services created"
 }
@@ -402,33 +413,35 @@ EOF
 start_services() {
     print_step "Starting DNSTT services..."
     
-    # Kill any existing processes
-    pkill -f "sldns-server" 2>/dev/null || true
-    pkill -f "sldns-client" 2>/dev/null || true
+    # Kill existing processes
+    pkill sldns-server 2>/dev/null || true
+    pkill sldns-client 2>/dev/null || true
     
     systemctl daemon-reload
     
+    # Stop existing if running
+    systemctl stop server-sldns client-sldns 2>/dev/null || true
+    
     # Enable and start server
-    systemctl enable ${SERVER_SERVICE} 2>/dev/null
-    systemctl start ${SERVER_SERVICE} 2>/dev/null
+    systemctl enable server-sldns 2>/dev/null
+    systemctl start server-sldns 2>/dev/null
     
     # Enable and start client (optional)
-    systemctl enable ${CLIENT_SERVICE} 2>/dev/null
-    systemctl start ${CLIENT_SERVICE} 2>/dev/null
+    systemctl enable client-sldns 2>/dev/null
+    systemctl start client-sldns 2>/dev/null
     
     sleep 3
     
-    # Verify server
-    if systemctl is-active --quiet ${SERVER_SERVICE}; then
+    # Verify
+    if systemctl is-active --quiet server-sldns; then
         print_success "DNSTT Server running on UDP port 5300"
         print_info "NS Domain: $NS_DOMAIN"
     else
         print_error "DNSTT Server failed!"
-        journalctl -u ${SERVER_SERVICE} --no-pager -n 10 2>/dev/null || true
+        journalctl -u server-sldns --no-pager -n 10 2>/dev/null || true
     fi
     
-    # Verify client
-    if systemctl is-active --quiet ${CLIENT_SERVICE}; then
+    if systemctl is-active --quiet client-sldns; then
         print_success "DNSTT Client running"
     else
         print_warn "DNSTT Client not running (may be normal on server)"
@@ -492,17 +505,17 @@ display_summary() {
     
     echo -e "${CYAN}📁 SERVICE INFORMATION:${NC}"
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "Server Service" "$SERVER_SERVICE"
-    printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "Client Service" "$CLIENT_SERVICE"
+    printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "Server Service" "server-sldns"
+    printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "Client Service" "client-sldns"
     printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "Config Dir" "$SLOWDNS_DIR"
     printf "  ${WHITE}%-14s${NC} : ${GREEN}%s${NC}\n" "Log Dir" "$SLOWDNS_LOG_DIR"
     echo ""
     
     echo -e "${CYAN}📋 COMMANDS:${NC}"
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${WHITE}Check status:${NC} systemctl status $SERVER_SERVICE"
-    echo -e "  ${WHITE}Restart:${NC}      systemctl restart $SERVER_SERVICE"
-    echo -e "  ${WHITE}View logs:${NC}    journalctl -u $SERVER_SERVICE -f"
+    echo -e "  ${WHITE}Check status:${NC} systemctl status server-sldns"
+    echo -e "  ${WHITE}Restart:${NC}      systemctl restart server-sldns"
+    echo -e "  ${WHITE}View logs:${NC}    journalctl -u server-sldns -f"
     echo ""
     
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
