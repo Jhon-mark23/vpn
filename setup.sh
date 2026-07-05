@@ -3,23 +3,18 @@
 # MARCSCRIPT VPN INSTALLER (Unified Cert Edition)
 # All-in-One VPN Solution for Debian & Ubuntu
 # 
-# NEW ORDER (Updated):
+# Order:
 #   1. Domain config
 #   2. Clean old services & DNSTT
 #   3. Secure SSH (safe remote access)
 #   4. Create unified certificate (create-cert.sh)
 #   5. Install SSH‑VPN (ssh-vpn.sh)
-#   6. Install Python WS proxy + Squid + BADVPN (insshws.sh)
-#   7. Install Xray core (ins-xray.sh)
-#   8. Install Nginx reverse proxy (nginx-setup.sh)
-#   9. Install DNSTT (install-dnstt.sh)
-#
-# NOTE: Nginx is now separate (nginx-setup.sh) for unified proxy
-#       Squid & BADVPN moved to insshws.sh
-#       All services go through Nginx on ports 80 & 443
+#   6. Install Python WS proxy (insshws.sh)
+#   7. Install Xray (ins-xray.sh)
+#   8. Install DNSTT (install-dnstt.sh)
 #
 # Author: MarcScript
-# Version: 3.0 (Modular Architecture - Nginx Unified Proxy)
+# Version: 2.4 (Clean DNSTT, Safe SSH, Port Cleanup)
 # ============================================================
 
 # ---------- COLOURS ----------
@@ -58,8 +53,7 @@ show_banner() {
     echo -e "${BPurple}║${BWhite}     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║${BPurple}║${NC}"
     echo -e "${BPurple}║${BWhite}     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║${BPurple}║${NC}"
     echo -e "${BPurple}║${BWhite}     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝${BPurple}║${NC}"
-    echo -e "${BPurple}║${BCyan}         ALL-IN-ONE VPN INSTALLER v3.0                    ${BPurple}║${NC}"
-    echo -e "${BPurple}║${BWhite}         Modular • Nginx Unified Proxy • No Conflicts     ${BPurple}║${NC}"
+    echo -e "${BPurple}║${BCyan}           ALL-IN-ONE VPN INSTALLER v2.4                  ${BPurple}║${NC}"
     echo -e "${BPurple}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -94,8 +88,6 @@ clean_old_services() {
     systemctl stop xray 2>/dev/null || true
     systemctl stop ws-dropbear 2>/dev/null || true
     systemctl stop ws-stunnel 2>/dev/null || true
-    systemctl stop ws-proxy 2>/dev/null || true
-    systemctl stop squid 2>/dev/null || true
     systemctl stop server-sldns-udp 2>/dev/null || true
     systemctl stop server-sldns-doh 2>/dev/null || true
     systemctl stop client-sldns 2>/dev/null || true
@@ -110,8 +102,6 @@ clean_old_services() {
     pkill -f xray 2>/dev/null || true
     pkill -f ws-dropbear 2>/dev/null || true
     pkill -f ws-stunnel 2>/dev/null || true
-    pkill -f ws-proxy 2>/dev/null || true
-    pkill -f squid 2>/dev/null || true
     pkill -f sldns-server 2>/dev/null || true
     pkill -f sldns-client 2>/dev/null || true
     pkill -f dnstt-server 2>/dev/null || true
@@ -128,16 +118,14 @@ clean_old_services() {
     rm -f /etc/systemd/system/client-sldns*.service 2>/dev/null || true
     rm -f /etc/systemd/system/dnstt*.service 2>/dev/null || true
     
-    # Remove old configs (backup first if needed)
+    # Remove other configs
     rm -rf /etc/nginx/conf.d/* 2>/dev/null || true
-    rm -rf /etc/nginx/stream.d/* 2>/dev/null || true
     rm -rf /etc/stunnel/* 2>/dev/null || true
     rm -rf /etc/xray/* 2>/dev/null || true
     rm -rf /etc/v2ray/* 2>/dev/null || true
     rm -f /var/log/xray/* 2>/dev/null || true
     rm -rf /opt/ws-proxy 2>/dev/null || true
     rm -rf /root/.acme.sh 2>/dev/null || true
-    rm -f /etc/squid/squid.conf 2>/dev/null || true
     
     # Remove binaries
     rm -f /usr/bin/badvpn-udpgw 2>/dev/null || true
@@ -145,7 +133,6 @@ clean_old_services() {
     rm -f /usr/local/bin/ws-stunnel 2>/dev/null || true
     rm -f /usr/local/bin/xray 2>/dev/null || true
     rm -f /usr/local/bin/create-cert.sh 2>/dev/null || true
-    rm -f /usr/local/bin/http-proxy.py 2>/dev/null || true
     
     # Remove menu scripts
     rm -f /usr/bin/menu 2>/dev/null || true
@@ -190,7 +177,7 @@ secure_ssh() {
 # MARCSCRIPT SSH CONFIG - Safe Remote Access
 # ============================================================
 
-# Ports (primary + fallback)
+# Ports
 Port 22
 Port 9696
 Port 2222
@@ -223,36 +210,11 @@ Banner /etc/ssh/ssh_banner
 Subsystem sftp /usr/lib/openssh/sftp-server
 EOF
 
+
     # Restart SSH
     systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     
     print_success "SSH secured on ports 22, 9696, 2222, 2269"
-}
-
-# ============================================================
-# SHOW INSTALLATION PLAN
-# ============================================================
-show_install_plan() {
-    echo ""
-    echo -e "${BCyan}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BCyan}║${BWhite}                  INSTALLATION PLAN v3.0                  ${BCyan}║${NC}"
-    echo -e "${BCyan}╚══════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo -e "   ${BGreen}1.${NC} Domain Configuration"
-    echo -e "   ${BGreen}2.${NC} Clean Old Services"
-    echo -e "   ${BGreen}3.${NC} Secure SSH Access"
-    echo -e "   ${BGreen}4.${NC} SSL Certificate (create-cert.sh)"
-    echo -e "   ${BGreen}5.${NC} SSH/Dropbear/Stunnel/WS Proxy (ssh-vpn.sh)"
-    echo -e "   ${BGreen}6.${NC} Python WS + Squid + BADVPN (insshws.sh)"
-    echo -e "   ${BGreen}7.${NC} Xray Core - Internal Ports (ins-xray.sh)"
-    echo -e "   ${BGreen}8.${NC} Nginx Unified Reverse Proxy (nginx-setup.sh)"
-    echo -e "   ${BGreen}9.${NC} DNSTT - SlowDNS (install-dnstt.sh)"
-    echo ""
-    echo -e "   ${BYellow}Architecture:${NC}"
-    echo -e "   ${BWhite}Client → Nginx (80/443) → Backend Services (internal)${NC}"
-    echo ""
-    echo -e "   ${BYellow}No Port Conflicts • Modular • Easy Maintenance${NC}"
-    echo ""
 }
 
 # ============================================================
@@ -277,7 +239,6 @@ for path in "/root/domain.txt" "/root/domain" "/etc/xray/domain" "/etc/v2ray/dom
 done
 
 show_banner
-show_install_plan
 detect_os
 
 # Clean everything before install
@@ -306,7 +267,7 @@ if [[ "$hst" != "$dart" ]]; then
     echo "$localip $(hostname)" >> /etc/hosts
 fi
 
-mkdir -p /etc/xray /etc/v2ray /etc/nginx/conf.d /etc/nginx/stream.d
+mkdir -p /etc/xray /etc/v2ray
 
 echo -e "[ ${BBlue}ℹ NOTES${NC} ] Checking headers"
 sleep 0.5
@@ -432,82 +393,37 @@ sleep 2
 clear
 
 # ============================================================
-# DOWNLOAD & RUN CONSTITUENT INSTALLERS (Updated Order)
+# DOWNLOAD & RUN CONSTITUENT INSTALLERS
 # ============================================================
-
-show_banner
-echo -e "${BCyan}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BCyan}║${BWhite}               STARTING MODULAR INSTALLATION              ${BCyan}║${NC}"
-echo -e "${BCyan}╚══════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "   ${BGreen}Step 1/6:${NC} SSL Certificate..."
-echo -e "   ${BGreen}Step 2/6:${NC} SSH/Dropbear/Stunnel/WS Proxy..."
-echo -e "   ${BGreen}Step 3/6:${NC} Python WS + Squid + BADVPN..."
-echo -e "   ${BGreen}Step 4/6:${NC} Xray Core (Internal Ports)..."
-echo -e "   ${BGreen}Step 5/6:${NC} Nginx Unified Reverse Proxy..."
-echo -e "   ${BGreen}Step 6/6:${NC} DNSTT SlowDNS..."
-echo ""
-
-# ---- Step 1: Certificate ----
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BWhite}  STEP 1/6: Generating SSL Certificate${NC}"
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# Certificate
 wget -q -O /usr/local/bin/create-cert.sh "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/create-cert.sh"
 sed -i 's/\r$//' /usr/local/bin/create-cert.sh
 chmod +x /usr/local/bin/create-cert.sh
 bash /usr/local/bin/create-cert.sh
-print_success "Certificate created"
 
-# ---- Step 2: SSH VPN ----
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BWhite}  STEP 2/6: Installing SSH/Dropbear/Stunnel/WS Proxy${NC}"
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# SSH VPN
 wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/ssh-vpn.sh -O ssh-vpn.sh
 sed -i 's/\r$//' ssh-vpn.sh
 chmod +x ssh-vpn.sh
 bash ssh-vpn.sh
-print_success "SSH VPN installed"
 
-# ---- Step 3: WebSocket + Proxy + BADVPN ----
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BWhite}  STEP 3/6: Installing Python WS + Squid Proxy + BADVPN${NC}"
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# WebSocket
 wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/sshws/insshws.sh -O insshws.sh
 sed -i 's/\r$//' insshws.sh
 chmod +x insshws.sh
 bash insshws.sh
-print_success "WebSocket + Proxy + BADVPN installed"
 
-# ---- Step 4: Xray Core ----
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BWhite}  STEP 4/6: Installing Xray Core (Internal Ports)${NC}"
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# Xray
 wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/ins-xray.sh -O ins-xray.sh
 sed -i 's/\r$//' ins-xray.sh
 chmod +x ins-xray.sh
 bash ins-xray.sh
-print_success "Xray core installed"
 
-# ---- Step 5: Nginx Reverse Proxy (NEW) ----
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BWhite}  STEP 5/6: Installing Nginx Unified Reverse Proxy${NC}"
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/nginx/nginx-setup.sh -O nginx-setup.sh
-sed -i 's/\r$//' nginx-setup.sh
-chmod +x nginx-setup.sh
-# Auto-detect mode (option 1) for automated install
-echo "1" | bash nginx-setup.sh 2>/dev/null || bash nginx-setup.sh
-print_success "Nginx reverse proxy installed"
-
-# ---- Step 6: DNSTT (UDP + DoH) ----
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BWhite}  STEP 6/6: Installing DNSTT SlowDNS${NC}"
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# DNSTT (UDP + DoH)
 wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/dnstt/install-dnstt.sh -O install-dnstt.sh
 sed -i 's/\r$//' install-dnstt.sh
 chmod +x install-dnstt.sh
 bash install-dnstt.sh
-print_success "DNSTT installed"
 
 # ============================================================
 # FINALIZE
@@ -544,36 +460,12 @@ echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${BWhite}                   🔧 MANAGEMENT COMMANDS${NC}"
 echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "   ${BGreen}menu${NC}           - Main menu"
-echo -e "   ${BGreen}vpn-status${NC}     - Check all services"
-echo -e "   ${BGreen}nginx-proxy${NC}    - Nginx proxy management"
-echo -e "   ${BGreen}xray-info${NC}      - Xray configuration info"
-echo -e "   ${BGreen}proxy-status${NC}   - Proxy services status"
-echo -e "   ${BGreen}usernew${NC}        - Create SSH user"
-echo -e "   ${BGreen}trial${NC}          - Create trial user"
-echo -e "   ${BGreen}cek${NC}            - Check user accounts"
-echo ""
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BWhite}                   📡 CONNECTION PORTS${NC}"
-echo -e "${BCyan}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo -e "   ${BYellow}All services via Nginx reverse proxy:${NC}"
-echo -e "   ├── Port 80  : HTTP (WebSocket, Xray NTLS)"
-echo -e "   ├── Port 443 : HTTPS (WebSocket SSL, Xray TLS, gRPC)"
-echo -e "   ├── Port 22  : SSH Direct"
-echo -e "   ├── Port 109 : Dropbear"
-echo -e "   ├── Port 143 : Dropbear Alt"
-echo -e "   ├── Port 3128: Squid Proxy"
-echo -e "   ├── Port 8082: Squid Proxy"
-echo -e "   └── Port 8888: Squid Proxy"
+echo -e "   ${BGreen}menu${NC}         - Main menu"
+echo -e "   ${BGreen}create${NC}       - Create SSH user"
+echo -e "   ${BGreen}vpn-status${NC}   - Check service status"
 echo ""
 
 secs_to_human "$(($(date +%s) - ${start}))" | tee -a log-install.txt
 
-# Save install log
-echo "Installation completed on: $(date)" >> /root/log-install.txt
-echo "Domain: $PREVIOUS_DOMAIN" >> /root/log-install.txt
-echo "Version: 3.0 (Modular - Nginx Unified Proxy)" >> /root/log-install.txt
-
-rm -f /root/setup.sh /root/ins-xray.sh /root/insshws.sh /root/ssh-vpn.sh /root/create-cert.sh /root/install-dnstt.sh /root/nginx-setup.sh 2>/dev/null
+rm -f /root/setup.sh /root/ins-xray.sh /root/insshws.sh /root/ssh-vpn.sh /root/create-cert.sh /root/install-dnstt.sh 2>/dev/null
 exit 0
