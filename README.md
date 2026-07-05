@@ -63,7 +63,7 @@ wget https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/setup.sh 
 chmod +x setup.sh && \
 sed -i 's/\r$//' setup.sh && \
 screen -S setup ./setup.sh && \
-clear && rm setup.sh
+clear && menu
 ```
 
 ---
