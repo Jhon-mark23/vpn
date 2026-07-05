@@ -2,9 +2,10 @@
 # ============================================================
 # insshws.sh – Python WebSocket proxy + Squid Proxy + BADVPN Installer
 # Uses: ws-dropbear.service (port 2095) & ws-stunnel.service (port 700)
-# Proxy: Squid (3128, 8082, 8888) with Python fallback
-# BADVPN: UDP Gateway (7100-7400)
+# Proxy: Squid (3128, 8082, 8888) - Squid 7.x Compatible
+# BADVPN: UDP Gateway (7100-7400) with systemd services
 # Compatible with Debian / Ubuntu
+# Version: 2.0 (Fixed Squid 7.x + BADVPN systemd)
 # ============================================================
 
 set -e
@@ -28,6 +29,7 @@ show_banner() {
     clear
     echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${PURPLE}║${BLUE}     PYTHON WEBSOCKET PROXY + SQUID + BADVPN INSTALLER   ${PURPLE}║${NC}"
+    echo -e "${PURPLE}║${GREEN}              Version 2.0 - Squid 7.x Compatible         ${PURPLE}║${NC}"
     echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -520,10 +522,11 @@ PYEOF
 }
 
 # ============================================================
-# CONFIGURE SQUID PROXY
+# CONFIGURE SQUID PROXY - Squid 7.x Compatible
 # ============================================================
 configure_squid() {
     print_info "Configuring Squid proxy (3128, 8082, 8888)..."
+    print_info "Using Squid 7.x compatible configuration"
     
     # Complete cleanup of old squid
     print_info "Cleaning up old squid installation..."
@@ -548,15 +551,16 @@ configure_squid() {
         return 1
     }
     
-    # Create clean config
-    print_info "Creating squid configuration..."
+    # Create Squid 7.x compatible config
+    print_info "Creating Squid 7.x compatible configuration..."
     cat > /etc/squid/squid.conf <<'EOF'
-# Squid Proxy Config - Optimized for Debian/Ubuntu
+# Squid Proxy Config - Squid 7.x Compatible
+# Removed: dns_v4_first (obsolete), icmp_allow (removed)
 http_port 3128
 http_port 8082
 http_port 8888
 
-# Use 'all' instead of '0.0.0.0/0' for newer squid versions
+# Access control
 acl all src all
 http_access allow all
 
@@ -566,17 +570,10 @@ cache_mem 64 MB
 maximum_object_size_in_memory 32 KB
 maximum_object_size 1024 MB
 
-# Performance
-forwarded_for off
-request_header_access X-Forwarded-For deny all
+# Performance & Security
+forwarded_for delete
 visible_hostname localhost
 dns_nameservers 8.8.8.8 1.1.1.1
-
-# Disable IPv6 to avoid warnings
-dns_v4_first on
-icmp_allow off
-
-# Security and performance
 via off
 httpd_suppress_version_string on
 EOF
@@ -587,16 +584,39 @@ EOF
     chown -R proxy:proxy /var/spool/squid 2>/dev/null || true
     chown -R proxy:proxy /var/log/squid 2>/dev/null || true
     
+    # Test config
+    print_info "Testing Squid configuration..."
+    if squid -k parse 2>&1 | grep -q "FATAL"; then
+        print_warn "Squid config has errors, using minimal config..."
+        cat > /etc/squid/squid.conf <<'EOF'
+http_port 3128
+http_port 8082
+http_port 8888
+acl all src all
+http_access allow all
+cache_dir ufs /var/spool/squid 100 16 256
+cache_mem 64 MB
+forwarded_for delete
+visible_hostname localhost
+EOF
+    fi
+    
     # Initialize cache
     print_info "Initializing squid cache..."
     squid -z 2>/dev/null || true
     
+    # Ensure no leftover processes
+    pkill -9 squid 2>/dev/null || true
+    rm -f /run/squid.pid /var/run/squid.pid 2>/dev/null || true
+    sleep 1
+    
     # Start squid
     print_info "Starting squid service..."
     systemctl stop squid 2>/dev/null || true
-    sleep 2
     systemctl start squid 2>/dev/null || {
-        print_warning "Failed to start squid via systemd, trying manual start..."
+        print_warn "Failed to start squid via systemd, trying manual start..."
+        pkill -9 squid 2>/dev/null || true
+        rm -f /run/squid.pid 2>/dev/null || true
         /usr/sbin/squid -N -d1 2>/dev/null &
         sleep 3
     }
@@ -609,16 +629,20 @@ EOF
     if systemctl is-active --quiet squid 2>/dev/null || pgrep -x "squid" > /dev/null; then
         print_success "Squid proxy on ports 3128, 8082, 8888"
         
+        # Show listening ports
+        ss -tlnp 2>/dev/null | grep -E ':(3128|8082|8888)\s' || true
+        
         # Test squid
         if command -v curl &> /dev/null; then
+            sleep 2
             if curl -x http://localhost:3128 http://google.com -I -s -o /dev/null -w "%{http_code}" 2>/dev/null | grep -q "200\|301\|302"; then
                 print_success "Squid proxy test passed"
             else
-                print_warning "Squid is running but proxy test failed"
+                print_warn "Squid is running but proxy test failed (may need more time to start)"
             fi
         fi
     else
-        print_warning "Squid failed to start - using Python fallback"
+        print_warn "Squid failed to start - using Python fallback"
         configure_python_fallback
     fi
 }
@@ -687,8 +711,8 @@ PYPROXY
 
     chmod +x /usr/local/bin/http-proxy.py
     
-    # Start proxy in screen
-    screen -dmS proxy python3 /usr/local/bin/http-proxy.py
+    # Start proxy in background
+    nohup python3 /usr/local/bin/http-proxy.py > /var/log/http-proxy.log 2>&1 &
     
     sleep 2
     
@@ -702,7 +726,7 @@ PYPROXY
             if curl -x http://localhost:3128 http://google.com -I -s -o /dev/null -w "%{http_code}" 2>/dev/null | grep -q "200\|301\|302"; then
                 print_success "Python proxy test passed"
             else
-                print_warning "Python proxy is running but test failed"
+                print_warn "Python proxy is running but test failed"
             fi
         fi
     else
@@ -713,53 +737,73 @@ PYPROXY
         for port in 3128 8082 8888; do
             screen -dmS proxy_$port nc -l -p $port -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nMarcScript Proxy Server"' 2>/dev/null || true
         done
-        print_warning "Netcat fallback listeners started (limited functionality)"
+        print_warn "Netcat fallback listeners started (limited functionality)"
     fi
 }
 
 # ============================================================
-# INSTALL BADVPN UDP GATEWAY
+# INSTALL BADVPN UDP GATEWAY with systemd services
 # ============================================================
 install_badvpn() {
     print_info "Installing BADVPN UDP gateway (7100-7400)..."
+    print_info "Creating systemd services for proper management"
     
+    # Download BADVPN binary
     cd /tmp
     wget -q -O /usr/bin/badvpn-udpgw "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/newudpgw"
     chmod +x /usr/bin/badvpn-udpgw
     
-    # Create systemd services for better management
+    # Verify binary
+    if [ ! -f /usr/bin/badvpn-udpgw ]; then
+        print_error "Failed to download BADVPN binary"
+        return 1
+    fi
+    
+    # Create systemd services for each port
     for port in 7100 7200 7300 7400; do
         local instance=$((port/100))
+        
+        # Stop any existing screen sessions
+        screen -S badvpn${instance} -X quit 2>/dev/null || true
+        
+        # Create systemd service
         cat > /etc/systemd/system/badvpn-${instance}.service << EOF
 [Unit]
 Description=BADVPN UDP Gateway on port ${port}
 After=network.target
+Documentation=https://github.com/ambrop72/badvpn
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:${port} --max-clients 50
 Restart=always
 RestartSec=3
+User=root
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
 EOF
         
+        # Enable and start service
         systemctl daemon-reload
         systemctl enable badvpn-${instance} 2>/dev/null || true
         systemctl start badvpn-${instance} 2>/dev/null || true
+        
+        if systemctl is-active --quiet badvpn-${instance}; then
+            print_success "BADVPN UDP ${port} running (systemd)"
+        else
+            print_warn "BADVPN ${port} systemd failed, using screen fallback..."
+            screen -dmS badvpn${instance} /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:${port} --max-clients 50
+        fi
         
         # Also add to rc.local for compatibility
         if ! grep -q "badvpn${instance}" /etc/rc.local 2>/dev/null; then
             sed -i "\$ i\screen -dmS badvpn${instance} badvpn-udpgw --listen-addr 127.0.0.1:${port} --max-clients 50" /etc/rc.local
         fi
     done
-    
-    # Start via screen for immediate use
-    screen -dmS badvpn1 badvpn-udpgw --listen-addr 127.0.0.1:7100 --max-clients 50 2>/dev/null || true
-    screen -dmS badvpn2 badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 50 2>/dev/null || true
-    screen -dmS badvpn3 badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 50 2>/dev/null || true
-    screen -dmS badvpn4 badvpn-udpgw --listen-addr 127.0.0.1:7400 --max-clients 50 2>/dev/null || true
     
     print_success "BADVPN UDP gateway installed on ports 7100-7400"
 }
@@ -841,13 +885,16 @@ start_services() {
     fi
     
     # Check BADVPN services
+    echo ""
+    print_info "Checking BADVPN services..."
     for port in 7100 7200 7300 7400; do
         local instance=$((port/100))
         if systemctl is-active --quiet badvpn-${instance} 2>/dev/null; then
-            print_success "BADVPN UDP ${port} is running"
+            print_success "BADVPN UDP ${port} is running (systemd)"
+        elif screen -list 2>/dev/null | grep -q "badvpn${instance}"; then
+            print_warn "BADVPN UDP ${port} running via screen"
         else
-            print_warn "BADVPN UDP ${port} starting via screen..."
-            screen -dmS badvpn${instance} badvpn-udpgw --listen-addr 127.0.0.1:${port} --max-clients 50 2>/dev/null || true
+            print_warn "BADVPN UDP ${port} not running"
         fi
     done
 }
@@ -889,6 +936,7 @@ systemctl restart badvpn-71 2>/dev/null || true
 systemctl restart badvpn-72 2>/dev/null || true
 systemctl restart badvpn-73 2>/dev/null || true
 systemctl restart badvpn-74 2>/dev/null || true
+sleep 2
 echo "All proxy services restarted!"
 /usr/local/bin/proxy-status
 EOF
@@ -921,10 +969,10 @@ main() {
     echo -e "${PURPLE}║${GREEN}              ✅ INSTALLATION COMPLETE!                   ${PURPLE}║${NC}"
     echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "   🔹 Squid Proxy    : 3128, 8082, 8888"
+    echo -e "   🔹 Squid Proxy    : 3128, 8082, 8888 (Squid 7.x Compatible)"
     echo -e "   🔹 ws-dropbear    : 2095 (for WS without SSL)"
     echo -e "   🔹 ws-stunnel     : 700  (for WS with SSL)"
-    echo -e "   🔹 BADVPN UDP     : 7100-7400"
+    echo -e "   🔹 BADVPN UDP     : 7100-7400 (systemd managed)"
     echo ""
     echo -e "   📋 Management Commands:"
     echo -e "      proxy-status   - Check all proxy services"
