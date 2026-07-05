@@ -313,13 +313,13 @@ configure_ssh() {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 <font color="#00ffcc">
-🚀 FAST • STABLE • SECURE
+            🚀 FAST • STABLE • SECURE
 </font>
 
 <br>
 
 <font color="#80ff00">
-⚡ MARCSCRIPT VPN ⚡
+            ⚡ MARCSCRIPT VPN ⚡
 </font>
 
 </center>
@@ -493,7 +493,7 @@ const server = http.createServer();
 server.on('connect', (req, socket) => {
     log(`CONNECT: ${req.url}`);
     const ssh = net.connect(SSH_PORT, SSH_HOST, () => {
-        socket.write('HTTP/1.1 200 Connection Established\r\nProxy-Agent: MarcScript\r\n\r\n');
+        socket.write('HTTP/1.1 200 MARCSCRIPT\r\nProxy-Agent: MarcScript\r\n\r\n');
         ssh.pipe(socket);
         socket.pipe(ssh);
     });
@@ -504,7 +504,7 @@ server.on('connect', (req, socket) => {
 server.on('upgrade', (req, socket) => {
     log(`WebSocket upgrade: ${req.headers.host}`);
     const ssh = net.connect(SSH_PORT, SSH_HOST, () => {
-        socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n');
+        socket.write('HTTP/1.1 101 MARCSCRIPT\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n');
         ssh.pipe(socket);
         socket.pipe(ssh);
     });
@@ -609,10 +609,10 @@ configure_squid() {
         return 1
     }
     
-    # Create clean config with OS-specific adjustments
+    # Create clean config with OS-specific adjustments (No deprecated directives)
     print_info "Creating squid configuration..."
     cat > /etc/squid/squid.conf <<'EOF'
-# Squid Proxy Config - Optimized for Debian/Ubuntu
+# Squid Proxy Config - Optimized for Squid 7+
 http_port 3128
 http_port 8082
 http_port 8888
@@ -633,10 +633,6 @@ request_header_access X-Forwarded-For deny all
 visible_hostname localhost
 dns_nameservers 8.8.8.8 1.1.1.1
 
-# Disable IPv6 to avoid warnings
-dns_v4_first on
-icmp_allow off
-
 # Security and performance
 via off
 httpd_suppress_version_string on
@@ -648,17 +644,33 @@ EOF
     chown -R proxy:proxy /var/spool/squid 2>/dev/null || true
     chown -R proxy:proxy /var/log/squid 2>/dev/null || true
     
-    # Initialize cache
-    print_info "Initializing squid cache..."
-    squid -z 2>/dev/null || true
-    
-    # Start squid
-    print_info "Starting squid service..."
+    # Write a clean systemd service file so it handles initialization automatically
+    cat > /etc/systemd/system/squid.service <<'EOF'
+[Unit]
+Description=Squid Web Proxy Server
+After=network.target
+
+[Service]
+Type=forking
+PIDFile=/run/squid.pid
+ExecStartPre=/usr/sbin/squid --foreground -z
+ExecStart=/usr/sbin/squid -f /etc/squid/squid.conf
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStop=/bin/kill -TERM $MAINPID
+KillMode=process
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Reload systemd and start squid
+    systemctl daemon-reload
     systemctl stop squid 2>/dev/null || true
     sleep 2
     systemctl start squid 2>/dev/null || {
-        print_warning "Failed to start squid via systemd, trying manual start..."
-        # Try manual start
+        print_warning "Failed to start squid via systemd, trying manual fallback..."
         /usr/sbin/squid -N -d1 2>/dev/null &
         sleep 3
     }
@@ -802,7 +814,8 @@ acl all src all
 http_access allow all
 cache_dir ufs /var/spool/squid 100 16 256
 cache_mem 64 MB
-icmp_allow off
+via off
+httpd_suppress_version_string on
 EOF
         squid -z 2>/dev/null || true
     fi
@@ -998,6 +1011,7 @@ download_scripts() {
     }
 
     dl menu menu/menu.sh
+    dl m-xray menu/m-xray.sh
     dl m-sshovpn menu/m-sshovpn.sh
     dl m-vmess menu/m-vmess.sh
     dl m-vless menu/m-vless.sh
