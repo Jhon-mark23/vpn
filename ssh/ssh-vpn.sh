@@ -71,12 +71,12 @@ run_safety_and_backup() {
         print_warning "Some required application ports are already active on this host:"
         echo -e "${yell}$used_ports${NC}"
         echo ""
-        read -p "Proceed and overwrite settings anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_error "Installation aborted by user due to running resource collisions."
-            exit 1
-        fi
+      #  read -p "Proceed and overwrite settings anyway? (y/N): " -n 1 -r
+       # echo
+      #  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+     #       print_error "Installation aborted by user due to running resource collisions."
+      #      exit 1
+        #fi
     fi
 
     print_info "Creating systemic backup in $BACKUP_DIR ..."
@@ -1178,9 +1178,9 @@ main() {
     echo "   MARCSCRIPT SSH VPN INSTALLER"
     echo "   (All Protocols Fixed & Working)"
     echo "==========================================="
-    read -p "Continue? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then exit 0; fi
+#   read -p "Continue? (y/N): " -n 1 -r
+#   echo
+#   if [[ ! $REPLY =~ ^[Yy]$ ]]; then exit 0; fi
 
     detect_os
     setup_environment
