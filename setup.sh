@@ -78,7 +78,7 @@ detect_os() {
 # CLEAN DNSTT & OLD SERVICES
 # ============================================================
 clean_old_services() {
-    print_info "Cleaning old services before installation..."
+    print_info "Cleaning old services before installation...."
     
     # Stop all services
     systemctl stop nginx 2>/dev/null || true
@@ -179,7 +179,6 @@ secure_ssh() {
 
 # Ports
 Port 22
-Port 9696
 Port 2222
 Port 2269
 
@@ -214,7 +213,7 @@ EOF
     # Restart SSH
     systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     
-    print_success "SSH secured on ports 22, 9696, 2222, 2269"
+    print_success "SSH secured on ports 22, 2222, 2269"
 }
 
 # ============================================================
