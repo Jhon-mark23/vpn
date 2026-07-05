@@ -179,6 +179,7 @@ secure_ssh() {
 
 # Ports
 Port 22
+Port 2222
 Port 2269
 
 # Authentication - Password auth enabled for remote access

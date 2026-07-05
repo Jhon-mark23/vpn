@@ -29,7 +29,7 @@ SLOWDNS_LOG_DIR="/var/log/slowdns"
 
 # Ports (non-conflicting)
 DNSTT_UDP_PORT="5300"        # DNS tunnel server port
-SSH_PORT="2221"              # Existing SSH port
+SSH_PORT="2222"              # Existing SSH port
 DNSTT_ALT_SSH="2269"         # Alternative SSH port
 
 # DNS Resolver
@@ -239,7 +239,7 @@ configure_ssh() {
     print_step "Configuring SSH for DNSTT..."
     
     # Remove duplicate port entries
-    sed -i '/^Port 2221/d' /etc/ssh/sshd_config 2>/dev/null || true
+    sed -i '/^Port 2222/d' /etc/ssh/sshd_config 2>/dev/null || true
     sed -i '/^Port 2269/d' /etc/ssh/sshd_config 2>/dev/null || true
     
     # Add SSH ports if not present

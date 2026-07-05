@@ -66,7 +66,7 @@ run_safety_and_backup() {
     fi
 
     # Target Ports: 22, 80, 8443, 8444, 8445, 8080, 8082, 3128, 8888, 109, 143, 81, 8081
-    local used_ports=$(ss -tuln | grep -E ':(22|80|8443|8444|8445|8080|8082|3128|8888|109|143|81|8081)\s' || true)
+    local used_ports=$(ss -tuln | grep -E ':(22|80|8443|8444|8445|8080|8082|3128|8888|109|143|81|8081|2222)\s' || true)
     if [ -n "$used_ports" ]; then
         print_warning "Some required application ports are already active on this host:"
         echo -e "${yell}$used_ports${NC}"
