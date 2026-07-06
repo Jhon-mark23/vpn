@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# VPN API INSTALLER - NODE.JS VERSION (FIXED PATHS)
+# VPN API INSTALLER - NODE.JS VERSION (CLEANUP + PORT HANDLING)
 # ============================================================
 
 clear
@@ -43,6 +43,36 @@ GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
 IP=$(wget -qO- ipv4.icanhazip.com || curl -sS ifconfig.me)
 
 # ============================================================
+# CLEANUP OLD INSTALLATION
+# ============================================================
+echo -e "${cyan}Cleaning up previous installation...${NC}"
+
+# Stop and delete PM2 process if exists
+if command -v pm2 &>/dev/null; then
+    pm2 stop vpn-api 2>/dev/null
+    pm2 delete vpn-api 2>/dev/null
+    pm2 save 2>/dev/null
+fi
+
+# Remove old API directory and scripts
+rm -rf "$API_DIR"
+rm -f /usr/bin/ssh-api.sh /usr/bin/vless-api.sh /usr/bin/vmess-api.sh
+
+# Check if port is in use
+if command -v netstat &>/dev/null; then
+    if netstat -tulpn | grep -q ":$API_PORT "; then
+        echo -e "${yellow}⚠️ Port $API_PORT is currently in use.${NC}"
+        echo -e "   You may want to stop the process using it before installing."
+        echo -e "   To force kill: fuser -k $API_PORT/tcp"
+        read -p "   Continue anyway? (y/N): " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            echo -e "${red}Installation aborted.${NC}"
+            exit 1
+        fi
+    fi
+fi
+
+# ============================================================
 # DOWNLOAD HELPER FUNCTION
 # ============================================================
 dl() {
@@ -75,14 +105,19 @@ npm install -g pm2
 # DOWNLOAD BASH SCRIPTS TO /usr/bin
 # ============================================================
 echo -e "${cyan}Downloading bash scripts to /usr/bin...${NC}"
-
-# Ensure /usr/bin exists and is writable
 mkdir -p /usr/bin
 
-# Download scripts using the helper
 dl /usr/bin/ssh-api.sh   api/ssh-api.sh
 dl /usr/bin/vless-api.sh api/vless-api.sh
 dl /usr/bin/vmess-api.sh api/vmess-api.sh
+
+# Verify they exist and are not empty
+for script in ssh-api.sh vless-api.sh vmess-api.sh; do
+    if [ ! -s "/usr/bin/$script" ]; then
+        echo -e "${red}✗ /usr/bin/$script is empty or missing!${NC}"
+        exit 1
+    fi
+done
 
 # ============================================================
 # SETUP API DIRECTORY AND DOWNLOAD api.js
@@ -91,11 +126,16 @@ echo -e "${cyan}Setting up API directory...${NC}"
 mkdir -p $API_DIR
 cd $API_DIR
 
-# Download the Node.js API script
 dl $API_DIR/api.js api/api.js
 
+# Verify api.js is not empty
+if [ ! -s "$API_DIR/api.js" ]; then
+    echo -e "${red}✗ api.js is empty or missing!${NC}"
+    exit 1
+fi
+
 # ============================================================
-# CREATE PM2 ECOSYSTEM FILE (optional but clean)
+# CREATE PM2 ECOSYSTEM FILE
 # ============================================================
 cat > ecosystem.config.js <<EOF
 module.exports = {
@@ -107,7 +147,9 @@ module.exports = {
     },
     watch: false,
     autorestart: true,
-    max_memory_restart: '200M'
+    max_memory_restart: '200M',
+    error_file: '/var/log/vpn-api-error.log',
+    out_file: '/var/log/vpn-api-out.log'
   }]
 };
 EOF
@@ -117,8 +159,26 @@ EOF
 # ============================================================
 echo -e "${cyan}Starting API with PM2...${NC}"
 pm2 start ecosystem.config.js
+if [ $? -ne 0 ]; then
+    echo -e "${red}✗ Failed to start API with PM2. Check logs: pm2 logs vpn-api${NC}"
+    exit 1
+fi
 pm2 save
 pm2 startup | tail -n 1 | bash
+
+# ============================================================
+# TEST API
+# ============================================================
+echo -e "${cyan}Testing API...${NC}"
+sleep 2  # Give it a moment to start
+TEST_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$API_PORT/api.js?token=admin&type=ssh&username=test&password=test&duration=1")
+if [ "$TEST_RESPONSE" = "200" ] || [ "$TEST_RESPONSE" = "403" ] || [ "$TEST_RESPONSE" = "400" ]; then
+    echo -e "${green}✓ API responded with HTTP $TEST_RESPONSE (OK)${NC}"
+else
+    echo -e "${red}✗ API did not respond correctly (HTTP $TEST_RESPONSE)${NC}"
+    echo -e "   Check logs: pm2 logs vpn-api"
+    echo -e "   Try to restart: pm2 restart vpn-api"
+fi
 
 # ============================================================
 # CONFIGURE FIREWALL
@@ -150,6 +210,7 @@ echo -e " Node.js      : ${green}$NODE_VERSION${NC}"
 echo -e " Scripts      : ${green}/usr/bin/{ssh,vless,vmess}-api.sh${NC}"
 echo -e " API Directory: ${green}${API_DIR}${NC}"
 echo -e " PM2 process  : ${green}pm2 show vpn-api${NC}"
+echo -e " Logs         : ${green}pm2 logs vpn-api${NC}"
 echo -e "${yellow}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "${cyan}📚 Usage Examples${NC}"
