@@ -5,11 +5,10 @@ const { exec } = require('child_process');
 // Hardcoded API Token
 const API_TOKEN = 'admin';
 
-// Script paths (same as before)
 const SCRIPTS = {
-    ssh: '/usr/local/bin/ssh-api.sh',
-    vless: '/usr/local/bin/vless-api.sh',
-    vmess: '/usr/local/bin/vmess-api.sh'
+    ssh: '/usr/bin/ssh-api.sh',
+    vless: '/usr/bin/vless-api.sh',
+    vmess: '/usr/bin/vmess-api.sh'
 };
 
 // Allowed types
