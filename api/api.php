@@ -6,9 +6,9 @@ $API_TOKEN = "admin";
 
 // Script paths
 $SCRIPTS = [
-    'ssh' => '/usr/local/bin/create_ssh_user.sh',
-    'vless' => '/usr/local/bin/create_vless_user.sh',
-    'vmess' => '/usr/local/bin/create_vmess_user.sh'
+    'ssh' => '/usr/local/bin/ssh-api.sh',
+    'vless' => '/usr/local/bin/vless-api.sh',
+    'vmess' => '/usr/local/bin/vmess-api.sh'
 ];
 
 // Check API Token
