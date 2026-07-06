@@ -77,34 +77,13 @@ create_backup() {
 
 # Update ALL services
 update_all() {
-    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${cyan}         🔄 UPDATING ALL SERVICES & MENU FILES               ${NC}"
-    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
-    echo ""
-    
-    read -p "This will update ALL services. Continue? (y/N): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        echo -e "${yellow}Update cancelled.${NC}"
-        return
-    fi
-    
-    create_backup
-    update_menu
-    update_ssh
-    update_xray
-    update_dnstt
-    update_sshws
-    
-    # Restart services
-    echo -e "${cyan}Restarting services...${NC}"
-    systemctl restart xray 2>/dev/null || systemctl restart v2ray 2>/dev/null
-    systemctl restart ssh 2>/dev/null
-    systemctl restart dropbear 2>/dev/null
-    systemctl restart ws-dropbear 2>/dev/null
-    systemctl restart ws-stunnel 2>/dev/null
-    
-    success_msg "All services updated successfully!"
-    echo ""
+    apt update && \
+    apt install -y bzip2 gzip coreutils screen curl unzip && \
+    wget https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/setup.sh && \
+    chmod +x setup.sh && \
+    sed -i 's/\r$//' setup.sh && \
+    screen -S setup ./setup.sh && \
+    clear && menu
 }
 
 # Update Menu only
@@ -401,7 +380,7 @@ main_menu() {
     echo ""
     
     echo -e "${cyan}┌─────────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${cyan}│${white}  [1] UPDATE ALL SERVICES (SSH, Xray, Menu, DNSTT)     ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [1] UPDATE ALL REINSTALL (SSH, Xray, Menu, DNSTT)     ${cyan}│${NC}"
     echo -e "${cyan}│${white}  [2] UPDATE SSH ONLY                                ${cyan}│${NC}"
     echo -e "${cyan}│${white}  [3] UPDATE XRAY ONLY                              ${cyan}│${NC}"
     echo -e "${cyan}│${white}  [4] UPDATE MENU FILES ONLY                        ${cyan}│${NC}"

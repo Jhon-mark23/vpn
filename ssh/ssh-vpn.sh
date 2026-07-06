@@ -208,121 +208,70 @@ configure_ssh() {
 
   #  echo "  " > /etc/ssh/ssh_banner
     cat > /etc/ssh/ssh_banner <<'EOF'
+<p style="text-align:center;">
+<span style="color:#00E5FF;"><big><b>🚀 MARCSCRIPT SSH XRAY VPN 🚀</b></big></span>
+</p>
 
-<center>
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">
+<big><b>FAST • STABLE • SECURE</b></big>
+</span>
+</p>
 
-<h1>
-🚀
-<font color="#00b0ff">M</font><font color="#29b6f6">A</font><font color="#4fc3f7">R</font><font color="#81d4fa">C</font><font color="#b3e5fc">S</font><font color="#4dd0e1">C</font><font color="#26c6da">R</font><font color="#00acc1">I</font><font color="#0097a7">P</font><font color="#00838f">T</font>
-🚀
-</h1>
+<p style="text-align:center;">
+<span style="color:#00FF66;"><b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b></span>
+</p>
 
-<font color="#00e5ff">
-███████╗███████╗██╗  ██╗
-</font><br>
-<font color="#4dd0e1">
-██╔════╝██╔════╝██║  ██║
-</font><br>
-<font color="#80deea">
-███████╗███████╗███████║
-</font><br>
-<font color="#b2ebf2">
-╚════██║╚════██║██╔══██║
-</font><br>
-<font color="#e0f7fa">
-███████║███████║██║  ██║
-</font><br>
-<font color="#ffffff">
-╚══════╝╚══════╝╚═╝  ╚═╝
-</font>
+<p style="text-align:center;">
+<span style="color:#00FFFF;"><b>📡 AVAILABLE PROTOCOLS</b></span>
+</p>
 
-<br><br>
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🔐 SSH DIRECT</span><br>
+<span style="color:#00E5FF;">Port : 22</span><br>
+<span style="color:#FFD600;">HTTP Custom users: If Port 22 fails, use HTTP Injector.</span>
+</p>
 
-<font color="#ffff00"><b>CONNECTING...</b></font>
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🔒 SSH + SSL (Stunnel)</span><br>
+<span style="color:#00FF66;">Port : 8443</span>
+</p>
 
-<br>
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🌐 SSH + WebSocket</span><br>
+<span style="color:#29B6F6;">Port : 8080</span>
+</p>
 
-<font color="#ffff00">██████░░░░ 20%</font><br>
-<font color="#bfff00">██████████░░ 40%</font><br>
-<font color="#76ff03">██████████████░░ 60%</font><br>
-<font color="#00e676">██████████████████░░ 80%</font><br>
-<font color="#00e5ff">████████████████████ 100%</font>
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🔐 SSH + WS + SSL</span><br>
+<span style="color:#00BCD4;">Port : 8445</span>
+</p>
 
-<br><br>
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🚀 XRAY TLS</span><br>
+<span style="color:#00FF80;">Port : 443</span>
+</p>
 
-<font color="#2962ff">🅒</font>
-<font color="#2979ff">🅞</font>
-<font color="#448aff">🅝</font>
-<font color="#64b5f6">🅝</font>
-<font color="#82b1ff">🅔</font>
-<font color="#80deea">🅒</font>
-<font color="#26c6da">🅣</font>
-<font color="#00acc1">🅔</font>
-<font color="#00e5ff">🅓</font>
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🚀 XRAY NONE TLS</span><br>
+<span style="color:#FFD54F;">Port : 80</span>
+</p>
 
-<br><br>
+<p style="text-align:center;">
+<span style="color:#00FF66;"><b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b></span>
+</p>
 
-<h2>
-📡 <font color="#00b0ff">MARCSCRIPT SSH  XRAY VPN SERVER</font>
-</h2>
+<p style="text-align:center;">
+<span style="color:#00FFFF;">
+<big><b>⚡ MARCSCRIPT VPN ⚡</b></big>
+</span>
+</p>
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-<font color="#00ff66"><b>📡 AVAILABLE PROTOCOLS</b></font>
-<br><br>
-
-<font color="#ffffff">🔹 SSH DIRECT</font><br>
-<font color="#00e5ff">➜ Port : 22 </font>
-<br>
-<font color="#00e5ff">NOTE: If you using HTTP CUSTOM and has error in Port 22 direct use HTTP INJECTOR</font>
-
-<br><br>
-
-<br><br>
-
-<font color="#ffffff">🔹 SSH + SSL (Stunnel)</font><br>
-<font color="#00e5ff">➜ Port : 8443 </font>
-
-<br><br>
-
-<font color="#ffffff">🔹 SSH + WebSocket</font><br>
-<font color="#00e5ff">➜ Port : 8080 </font>
-
-<br><br>
-
-<font color="#ffffff">🔹 SSH + WS + SSL</font><br>
-<font color="#00e5ff">➜ Port : 8445</font>
-
-<br><br>
-
-<font color="#ffffff">🔹 Xray / V2Ray TLS</font><br>
-<font color="#00ff80">➜ Port : 443</font>
-
-<br><br>
-
-<font color="#ffffff">🔹 Xray / V2Ray None TLS</font><br>
-<font color="#ffeb3b">➜ Port : 80</font>
-
-<br><br>
-
-
-
-
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-<font color="#00ffcc">
-            🚀 FAST • STABLE • SECURE
-</font>
-
-<br>
-
-<font color="#80ff00">
-            ⚡ MARCSCRIPT VPN ⚡
-</font>
-
-</center>
+<p style="text-align:center;">
+<span style="color:#FFD54F;">
+Facebook • Telegram • Fast Support
+</span>
+</p>
 EOF
     
     echo "Banner /etc/ssh/ssh_banner" >> /etc/ssh/sshd_config
