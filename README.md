@@ -66,6 +66,24 @@ screen -S setup ./setup.sh && \
 clear && menu
 ```
 
+
+
+- PRIVATE INSTALL
+````bash
+GITHUB_TOKEN=$(cat /root/token 2>/dev/null)
+
+# Install with token from file
+apt update && \
+apt install -y bzip2 gzip coreutils screen curl unzip && \
+curl -sS -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github.raw" \
+  "https://api.github.com/repos/Jhon-mark23/vpn/contents/setup.sh?ref=main" \
+  -o setup.sh && \
+chmod +x setup.sh && \
+sed -i 's/\r$//' setup.sh && \
+screen -S setup ./setup.sh && \
+clear && menu
+````
 ---
 
 # 🌐 SSH SERVICES

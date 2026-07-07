@@ -347,6 +347,7 @@ download_scripts() {
     dl m-system    "menu/m-system.sh"
     dl running     "menu/running.sh"
     dl clearcache  "menu/clearcache.sh"
+    dl m-banner    "menu/m-banner.sh"
     
     dl usernew  "ssh/usernew.sh"
     dl trial    "ssh/trial.sh"
