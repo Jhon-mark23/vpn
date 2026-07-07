@@ -3,7 +3,28 @@
 # MARCSCRIPT DNSTT INSTALLER
 # DNS Tunnel (SlowDNS) with UDP Support
 # Compatible with Ubuntu & Debian
+# Version: 2.0 (Private Repo)
 # ============================================================
+
+# ---------- GITHUB TOKEN ----------
+gtoken=$(cat /root/token 2>/dev/null || cat /root/token.txt 2>/dev/null)
+echo "setup install ${gtoken}"
+GITHUB_TOKEN="$gtoken"
+REPO_API="https://api.github.com/repos/Jhon-mark23/vpn/contents"
+REPO_REF="ref=main"
+AUTH_HEADER="Authorization: Bearer $GITHUB_TOKEN"
+RAW_HEADER="Accept: application/vnd.github.raw"
+
+# Helper function to download from private repo
+download_private() {
+    local remote_path="$1"
+    local output_file="$2"
+    curl -sS \
+        -H "$AUTH_HEADER" \
+        -H "$RAW_HEADER" \
+        "${REPO_API}/${remote_path}?${REPO_REF}" \
+        -o "$output_file"
+}
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -23,7 +44,6 @@ print_step()  { echo -e "[ ${CYAN}STEP${NC} ] $1"; }
 # ============================================================
 # CONFIGURATION
 # ============================================================
-GITHUB_RAW="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
 SLOWDNS_DIR="/etc/slowdns"
 SLOWDNS_LOG_DIR="/var/log/slowdns"
 
@@ -76,7 +96,7 @@ detect_arch() {
             ;;
     esac
     
-    print_info "Architecture: $ARCH → $SLOWDNS_ARCH"
+    print_info "Architecture: $ARCH -> $SLOWDNS_ARCH"
 }
 
 # ============================================================
@@ -121,10 +141,18 @@ remove_existing_services() {
         print_info "No existing client-sldns found"
     fi
     
+    # Clean old DNSTT services
+    rm -f /etc/systemd/system/dnstt-server.service 2>/dev/null || true
+    rm -f /etc/systemd/system/dnstt-client.service 2>/dev/null || true
+    rm -f /etc/systemd/system/server-sldns-udp.service 2>/dev/null || true
+    rm -f /etc/systemd/system/server-sldns-doh.service 2>/dev/null || true
+    
     # Kill any running processes
     print_info "Killing any running DNSTT processes..."
     pkill -f "sldns-server" 2>/dev/null || true
     pkill -f "sldns-client" 2>/dev/null || true
+    pkill -f "dnstt-server" 2>/dev/null || true
+    pkill -f "dnstt-client" 2>/dev/null || true
     
     # Reload systemd
     systemctl daemon-reload 2>/dev/null || true
@@ -181,22 +209,26 @@ setup_iptables() {
 # ============================================================
 get_domain() {
     print_step "Configuring DNS Tunnel domain..."
-    DOMAIN=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "None")
+    DOMAIN=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "")
     
-    # If no domain found, prompt user
-    if [[ "$DOMAIN" == "None" ]]; then
+    # If no domain found, check environment
+    if [[ -z "$DOMAIN" ]]; then
+        DOMAIN="$DOMAIN_ENV"
+    fi
+    
+    # If still no domain, prompt user
+    if [[ -z "$DOMAIN" ]]; then
         read -rp "Enter main domain: " DOMAIN
     else
         print_info "Found domain: $DOMAIN"
     fi
     
     # Read subdomain
-    read -rp "Enter subdomain prefix [ns]: " SUB
-    SUB=${SUB:-ns}
+    #read -rp "Enter subdomain prefix [ns]: " SUB
+    SUB="ns"
     
     # Build NS domain
-    SUB_DOMAIN="${SUB}.${DOMAIN}"
-    NS_DOMAIN="${SUB_DOMAIN}"
+    NS_DOMAIN="${SUB}.${DOMAIN}"
     
     echo "$NS_DOMAIN" > /root/nsdomain
     echo "$NS_DOMAIN" > /root/nsdomain.txt
@@ -205,19 +237,19 @@ get_domain() {
 }
 
 # ============================================================
-# INSTALL PACKAGES (Ubuntu/Debian Compatible)
+# INSTALL PACKAGES
 # ============================================================
 install_packages() {
     print_step "Installing required packages..."
     
     # Update package list
-    apt update -y
+    apt update -y 2>/dev/null
     
     # Install packages with correct names for Ubuntu/Debian
     apt install -y python3 python3-dnslib net-tools dnsutils \
-                   git curl wget screen cron iptables dropbear \
+                   git curl wget screen cron \
                    sudo gnutls-bin dos2unix debconf-utils \
-                   ca-certificates openssl
+                   ca-certificates openssl 2>/dev/null || true
     
     # Try to install ncurses-utils (may not exist on some versions)
     apt install -y ncurses-utils 2>/dev/null || {
@@ -225,9 +257,7 @@ install_packages() {
     }
     
     # Restart cron
-    systemctl restart cron 2>/dev/null || {
-        print_warn "Failed to restart cron, continuing..."
-    }
+    systemctl restart cron 2>/dev/null || true
     
     print_success "Packages installed"
 }
@@ -281,31 +311,36 @@ install_binaries() {
     mkdir -m 755 "$SLOWDNS_DIR"
     mkdir -p "$SLOWDNS_LOG_DIR"
     
-    # Download binaries and keys from repo
+    # Download binaries from private repo
     print_info "Downloading DNSTT server binary..."
-    wget -q --show-progress -O "$SLOWDNS_DIR/sldns-server" "$GITHUB_RAW/dnstt/dnstt-server-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
-        print_error "Failed to download server binary!"
-        print_error "URL: $GITHUB_RAW/dnstt/dnstt-server-linux-${SLOWDNS_ARCH}"
-        print_info "Trying alternative download source..."
+    download_private "dnstt/dnstt-server-linux-${SLOWDNS_ARCH}" "$SLOWDNS_DIR/sldns-server" 2>/dev/null
+    
+    if [ ! -s "$SLOWDNS_DIR/sldns-server" ]; then
+        print_error "Failed to download server binary from private repo!"
+        print_info "Trying public fallback source..."
         
-        # Try alternative source (Google Drive or other mirror)
-        wget -q --show-progress -O "$SLOWDNS_DIR/sldns-server" "https://github.com/mshafiee/dnstt/releases/latest/download/dnstt-server-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
+        # Fallback: try public GitHub release
+        curl -sL "https://github.com/mshafiee/dnstt/releases/latest/download/dnstt-server-linux-${SLOWDNS_ARCH}" \
+            -o "$SLOWDNS_DIR/sldns-server" 2>/dev/null || {
             print_error "All download attempts failed!"
             exit 1
         }
-    }
+    fi
     
     print_info "Downloading DNSTT client binary..."
-    wget -q --show-progress -O "$SLOWDNS_DIR/sldns-client" "$GITHUB_RAW/dnstt/dnstt-client-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
-        print_warn "Failed to download client binary (may be normal on server)"
-        # Try alternative source
-        wget -q --show-progress -O "$SLOWDNS_DIR/sldns-client" "https://github.com/mshafiee/dnstt/releases/latest/download/dnstt-client-linux-${SLOWDNS_ARCH}" 2>/dev/null || {
-            print_warn "Client binary not available, creating dummy"
+    download_private "dnstt/dnstt-client-linux-${SLOWDNS_ARCH}" "$SLOWDNS_DIR/sldns-client" 2>/dev/null
+    
+    if [ ! -s "$SLOWDNS_DIR/sldns-client" ]; then
+        print_warn "Failed to download client binary from private repo, trying fallback..."
+        
+        curl -sL "https://github.com/mshafiee/dnstt/releases/latest/download/dnstt-client-linux-${SLOWDNS_ARCH}" \
+            -o "$SLOWDNS_DIR/sldns-client" 2>/dev/null || {
+            print_warn "Client binary not available, creating placeholder"
             echo "#!/bin/bash" > "$SLOWDNS_DIR/sldns-client"
             echo "echo 'DNSTT Client not available'" >> "$SLOWDNS_DIR/sldns-client"
-            chmod +x "$SLOWDNS_DIR/sldns-client"
+            echo "exit 1" >> "$SLOWDNS_DIR/sldns-client"
         }
-    }
+    fi
     
     # Make executable
     chmod +x "$SLOWDNS_DIR/sldns-server"
@@ -313,12 +348,7 @@ install_binaries() {
     
     # Verify server binary
     if [ -f "$SLOWDNS_DIR/sldns-server" ] && [ -s "$SLOWDNS_DIR/sldns-server" ]; then
-        if "$SLOWDNS_DIR/sldns-server" 2>&1 | grep -q "Usage\|privkey-file\|Error"; then
-            print_success "DNSTT server binary verified"
-        else
-            print_error "DNSTT server binary verification failed!"
-            exit 1
-        fi
+        print_success "DNSTT server binary installed"
     else
         print_error "DNSTT server binary file is empty or missing!"
         exit 1
@@ -437,7 +467,8 @@ start_services() {
         print_success "DNSTT Server running on UDP port 5300"
         print_info "NS Domain: $NS_DOMAIN"
     else
-        print_error "DNSTT Server failed!"
+        print_error "DNSTT Server failed to start!"
+        print_info "Checking logs..."
         journalctl -u server-sldns --no-pager -n 10 2>/dev/null || true
     fi
     
@@ -536,7 +567,7 @@ main() {
     echo -e "  • DNS Tunnel (DoH/DoT/UDP)"
     echo -e "  • Auto-detects and removes existing services"
     echo -e "  • No conflict with existing services"
-    echo -e "  • Multi-architecture support"
+    echo -e "  • Multi-architecture support (amd64/386/arm64/armv7)"
     echo -e "  • Port 5300 (non-conflicting)"
     echo ""
     echo -e "${CYAN}Ports:${NC}"
