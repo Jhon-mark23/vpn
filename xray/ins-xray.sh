@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
 # INS-XRAY.SH - Install Xray (No Certificate Handling)
+# Version: 2.1 (Private Repo + Updated Nginx Config)
 # ============================================================
 # Prerequisites:
 #   - Domain in /root/domain
@@ -9,7 +10,28 @@
 #   - Nginx installed (for reverse proxy)
 # ============================================================
 
-MYIP=$(wget -qO- ipv4.icanhazip.com)
+# ---------- GITHUB TOKEN ----------
+gtoken=$(cat /root/token 2>/dev/null || cat /root/token.txt 2>/dev/null)
+
+echo "xray install ${gtoken}"
+GITHUB_TOKEN="$gtoken"
+REPO_API="https://api.github.com/repos/Jhon-mark23/vpn/contents"
+REPO_REF="ref=main"
+AUTH_HEADER="Authorization: Bearer $GITHUB_TOKEN"
+RAW_HEADER="Accept: application/vnd.github.raw"
+
+# Helper function to download from private repo
+download_private() {
+    local remote_path="$1"
+    local output_file="$2"
+    curl -sS \
+        -H "$AUTH_HEADER" \
+        -H "$RAW_HEADER" \
+        "${REPO_API}/${remote_path}?${REPO_REF}" \
+        -o "$output_file"
+}
+
+MYIP=$(curl -s ipv4.icanhazip.com)
 echo "Checking VPS"
 clear
 echo ""
@@ -60,7 +82,7 @@ export NEEDRESTART_MODE=a
 
 mkdir -p /etc/xray
 
-# ---- Certificate Handling (non‑blocking) ----
+# ---- Certificate Handling (non-blocking) ----
 if [ ! -f /etc/xray/xray.crt ] || [ ! -f /etc/xray/xray.key ]; then
     echo -e "[ ${yell}WARNING${NC} ] Xray certificate not found in /etc/xray/"
     if [ -f /usr/local/bin/create-cert.sh ]; then
@@ -90,7 +112,7 @@ apt update -y >/dev/null 2>&1
 
 PACKAGES="iptables iptables-persistent net-tools screen curl socat xz-utils wget 
 apt-transport-https gnupg gnupg2 dnsutils lsb-release bash-completion cron 
-openssl zip pwgen ca-certificates"
+openssl zip pwgen ca-certificates nginx"
 for pkg in $PACKAGES; do
     if ! dpkg -l | grep -q "^ii  $pkg "; then
         apt install -y $pkg >/dev/null 2>&1
@@ -437,7 +459,7 @@ Restart=on-abort
 WantedBy=multi-user.target
 EOF
 
-# ---- Nginx Config (with maximum TLS compatibility) ----
+# ---- Nginx Config (Updated - Removed old WS ports 2095/700, added Python WS ports) ----
 echo -e "[ ${green}INFO${NC} ] Creating nginx configuration..."
 
 cat > /etc/nginx/conf.d/xray.conf <<'EOF'
@@ -449,11 +471,23 @@ server {
 }
 
 server {
+    listen 8081;
+    server_name _;
+    root /home/vps/public_html;
+    location / {
+        return 200 "MarcScript Xray VPN Server";
+        add_header Content-Type text/plain;
+    }
+}
+
+# HTTP: Xray WebSocket + WebSocket proxy
+server {
     listen 80;
     listen [::]:80;
     server_name *.$domain;
     root /home/vps/public_html;
 
+    # Xray WebSocket paths
     location = /vmess {
         proxy_redirect off;
         proxy_pass http://127.0.0.1:23456;
@@ -494,9 +528,11 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $http_host;
     }
+    
+    # Python WS Proxy (SSH WebSocket)
     location / {
         proxy_redirect off;
-        proxy_pass http://127.0.0.1:2095;
+        proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -506,6 +542,7 @@ server {
     }
 }
 
+# HTTPS: Xray gRPC + WebSocket + Python WSS
 server {
     listen 443 ssl reuseport;
     listen [::]:443 ssl reuseport;
@@ -518,6 +555,7 @@ server {
     ssl_ciphers DEFAULT:!aNULL:!eNULL:!LOW:!MD5:!EXP:!RC4;
     root /home/vps/public_html;
 
+    # Xray WebSocket paths (TLS)
     location = /vmess {
         proxy_redirect off;
         proxy_pass http://127.0.0.1:23456;
@@ -559,6 +597,7 @@ server {
         proxy_set_header Host $http_host;
     }
 
+    # Xray gRPC paths (TLS)
     location ^~ /vless-grpc {
         proxy_redirect off;
         grpc_set_header X-Real-IP $remote_addr;
@@ -588,9 +627,22 @@ server {
         grpc_pass grpc://127.0.0.1:30310;
     }
 
+    # Stunnel SSL WebSocket (Port 8445)
+    location /ws-ssl {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:8445;
+        proxy_http_version 1.1;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+    }
+
+    # Python WSS Proxy (SSH WS + SSL on port 9443)
     location / {
         proxy_redirect off;
-        proxy_pass http://127.0.0.1:700;
+        proxy_pass http://127.0.0.1:9443;
         proxy_http_version 1.1;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -623,16 +675,18 @@ fi
 systemctl enable runn 2>/dev/null || true
 systemctl restart runn 2>/dev/null || true
 
-# ---- Download management scripts (with CRLF fix) ----
+# ---- Download management scripts (from private repo) ----
 cd /usr/bin/
-echo -e "[ ${green}INFO${NC} ] Downloading management scripts..."
+echo -e "[ ${green}INFO${NC} ] Downloading management scripts from private repo..."
 
 # Helper to download, fix line endings and make executable
 dl() {
-    wget -q -O "$1" "$2" && chmod +x "$1" && sed -i 's/\r$//' "$1"
+    download_private "$2" "$1"
+    chmod +x "$1"
+    sed -i 's/\r$//' "$1"
 }
 
-BASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray"
+BASE="xray"
 
 dl add-ws         "$BASE/add-ws.sh"
 dl trialvmess     "$BASE/trialvmess.sh"
@@ -664,17 +718,42 @@ mv /root/domain /etc/xray/ 2>/dev/null || true
 
 # Final verification
 sleep 2
+echo ""
+echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${green}   XRAY + NGINX SERVICE STATUS${NC}"
+echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
 if systemctl is-active --quiet xray; then
-    echo -e "[ ${green}✓${NC} ] Xray is running"
+    echo -e "[ ${green}●${NC} ] Xray   ${green}Running${NC}"
 else
-    echo -e "[ ${red}✗${NC} ] Xray is not running. Check: journalctl -u xray"
+    echo -e "[ ${red}●${NC} ] Xray   ${red}Not Running${NC} - Check: journalctl -u xray"
 fi
+
 if systemctl is-active --quiet nginx; then
-    echo -e "[ ${green}✓${NC} ] Nginx is running"
+    echo -e "[ ${green}●${NC} ] Nginx  ${green}Running${NC}"
 else
-    echo -e "[ ${red}✗${NC} ] Nginx is not running. Check: journalctl -u nginx"
+    echo -e "[ ${red}●${NC} ] Nginx  ${red}Not Running${NC} - Check: journalctl -u nginx"
 fi
+
+echo ""
+echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${green}   PORT SUMMARY${NC}"
+echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  ${cyan}80${NC}   - Xray WS (HTTP) + Python WS Proxy"
+echo -e "  ${cyan}443${NC}  - Xray WS/gRPC (HTTPS) + Python WSS Proxy"
+echo -e "  ${cyan}81${NC}   - Nginx Status Page"
+echo -e "  ${cyan}8080${NC} - Python WS Proxy (SSH Direct)"
+echo -e "  ${cyan}8081${NC} - Nginx Status Page Alt"
+echo -e "  ${cyan}8443${NC} - Stunnel SSH SSL"
+echo -e "  ${cyan}8444${NC} - Stunnel SSH SSL Alt"
+echo -e "  ${cyan}8445${NC} - Stunnel WS SSL"
+echo -e "  ${cyan}9443${NC} - Python WSS Proxy (SSH WS + SSL)"
+echo -e "  ${cyan}9445${NC} - Python WS Proxy (SSH WS Direct)"
+echo ""
 
 clear
 rm -f ins-xray.sh
 echo -e "${green}Xray installation complete!${NC}"
+echo -e "Domain: ${cyan}$domain${NC}"

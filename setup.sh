@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# MARCSCRIPT VPN INSTALLER (Unified Cert Edition)
+# MARCSCRIPT VPN INSTALLER (Unified Cert Edition) - PRIVATE REPO VERSION
 # All-in-One VPN Solution for Debian & Ubuntu
 # 
 # Order:
@@ -14,8 +14,29 @@
 #   8. Install DNSTT (install-dnstt.sh)
 #
 # Author: MarcScript
-# Version: 2.4 (Clean DNSTT, Safe SSH, Port Cleanup)
+# Version: 2.5 (Private Repo with GITHUB_TOKEN)
 # ============================================================
+
+# ---------- GITHUB TOKEN ----------
+gtoken=$(cat /root/token 2>/dev/null || cat /root/token.txt 2>/dev/null)
+
+echo "setup install ${gtoken}"
+GITHUB_TOKEN="$gtoken"
+REPO_API="https://api.github.com/repos/Jhon-mark23/vpn/contents"
+REPO_REF="ref=main"
+AUTH_HEADER="Authorization: Bearer $GITHUB_TOKEN"
+RAW_HEADER="Accept: application/vnd.github.raw"
+
+# Helper function to download from private repo
+download_private() {
+    local remote_path="$1"
+    local output_file="$2"
+    curl -sS \
+        -H "$AUTH_HEADER" \
+        -H "$RAW_HEADER" \
+        "${REPO_API}/${remote_path}?${REPO_REF}" \
+        -o "$output_file"
+}
 
 # ---------- COLOURS ----------
 red='\e[1;31m'
@@ -53,7 +74,7 @@ show_banner() {
     echo -e "${BPurple}║${BWhite}     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║${BPurple}║${NC}"
     echo -e "${BPurple}║${BWhite}     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║${BPurple}║${NC}"
     echo -e "${BPurple}║${BWhite}     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝${BPurple}║${NC}"
-    echo -e "${BPurple}║${BCyan}           ALL-IN-ONE VPN INSTALLER v2.4                  ${BPurple}║${NC}"
+    echo -e "${BPurple}║${BCyan}           ALL-IN-ONE VPN INSTALLER v2.5                  ${BPurple}║${NC}"
     echo -e "${BPurple}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -246,7 +267,7 @@ clean_old_services
 # Secure SSH before anything else
 secure_ssh
 
-CDN="https://raw.githubusercontent.com/Jhon-mark23/vpn/main/ssh"
+# Private repo base path for cf script
 cd /root
 
 if [ "${EUID}" -ne 0 ]; then
@@ -330,7 +351,10 @@ while true; do
         show_banner
         echo -e "[ ${BGreen}✓ INFO${NC} ] Generating random domain..."
         apt install jq curl -y
-        wget -q -O /root/cf "${CDN}/cf" >/dev/null 2>&1
+        
+        # Download cf script from private repo
+        download_private "ssh/cf" "/root/cf"
+        sed -i 's/\r$//' /root/cf
         chmod +x /root/cf
         bash /root/cf | tee /root/install.log
         
@@ -392,37 +416,38 @@ sleep 2
 clear
 
 # ============================================================
-# DOWNLOAD & RUN CONSTITUENT INSTALLERS
+# DOWNLOAD & RUN CONSTITUENT INSTALLERS (Private Repo)
 # ============================================================
+
 # Certificate
-wget -q -O /usr/local/bin/create-cert.sh "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/create-cert.sh"
+download_private "create-cert.sh" "/usr/local/bin/create-cert.sh"
 sed -i 's/\r$//' /usr/local/bin/create-cert.sh
 chmod +x /usr/local/bin/create-cert.sh
 bash /usr/local/bin/create-cert.sh
 
 # SSH VPN
-wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/ssh-vpn.sh -O ssh-vpn.sh
-sed -i 's/\r$//' ssh-vpn.sh
-chmod +x ssh-vpn.sh
-bash ssh-vpn.sh
+download_private "ssh/ssh-vpn.sh" "/root/ssh-vpn.sh"
+sed -i 's/\r$//' /root/ssh-vpn.sh
+chmod +x /root/ssh-vpn.sh
+bash /root/ssh-vpn.sh
 
 # WebSocket
-wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/sshws/insshws.sh -O insshws.sh
-sed -i 's/\r$//' insshws.sh
-chmod +x insshws.sh
-bash insshws.sh
+download_private "sshws/insshws.sh" "/root/insshws.sh"
+sed -i 's/\r$//' /root/insshws.sh
+chmod +x /root/insshws.sh
+bash /root/insshws.sh
 
 # Xray
-wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/xray/ins-xray.sh -O ins-xray.sh
-sed -i 's/\r$//' ins-xray.sh
-chmod +x ins-xray.sh
-bash ins-xray.sh
+download_private "xray/ins-xray.sh" "/root/ins-xray.sh"
+sed -i 's/\r$//' /root/ins-xray.sh
+chmod +x /root/ins-xray.sh
+bash /root/ins-xray.sh
 
 # DNSTT (UDP + DoH)
-wget -q https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/dnstt/install-dnstt.sh -O install-dnstt.sh
-sed -i 's/\r$//' install-dnstt.sh
-chmod +x install-dnstt.sh
-bash install-dnstt.sh
+download_private "dnstt/install-dnstt.sh" "/root/install-dnstt.sh"
+sed -i 's/\r$//' /root/install-dnstt.sh
+chmod +x /root/install-dnstt.sh
+bash /root/install-dnstt.sh
 
 # ============================================================
 # FINALIZE
@@ -444,7 +469,9 @@ rm -f /root/log-install.txt 2>/dev/null
 rm -f /etc/afak.conf 2>/dev/null
 touch /etc/log-create-ssh.log /etc/log-create-vmess.log /etc/log-create-vless.log /etc/log-create-trojan.log /etc/log-create-shadowsocks.log
 history -c
-serverV=$( curl -sS https://raw.githubusercontent.com/Jhon-mark23/vpn/main/menu/versi )
+
+# Get version from private repo
+serverV=$( curl -sS -H "$AUTH_HEADER" -H "$RAW_HEADER" "${REPO_API}/menu/versi?${REPO_REF}" )
 echo $serverV > /opt/.ver
 curl -sS ipv4.icanhazip.com > /etc/myipvps
 

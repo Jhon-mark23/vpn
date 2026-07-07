@@ -3,7 +3,30 @@
 # MARCSCRIPT SSH-VPN INSTALLER - XRAY COMPATIBLE
 # (Centralised certificate + max client compatibility)
 # ALL PROTOCOLS FIXED & WORKING WITH ENHANCED BACKUP & ROLLBACK
+# 
+# REMOVED: Squid Proxy, Dropbear, Node.js WebSocket (moved to insshws.sh)
 # ============================================================
+
+# ---------- GITHUB TOKEN ----------
+gtoken=$(cat /root/token 2>/dev/null || cat /root/token.txt 2>/dev/null)
+
+echo "SSH install ${gtoken}"
+GITHUB_TOKEN="$gtoken"
+REPO_API="https://api.github.com/repos/Jhon-mark23/vpn/contents"
+REPO_REF="ref=main"
+AUTH_HEADER="Authorization: Bearer $GITHUB_TOKEN"
+RAW_HEADER="Accept: application/vnd.github.raw"
+
+# Helper function to download from private repo
+download_private() {
+    local remote_path="$1"
+    local output_file="$2"
+    curl -sS \
+        -H "$AUTH_HEADER" \
+        -H "$RAW_HEADER" \
+        "${REPO_API}/${remote_path}?${REPO_REF}" \
+        -o "$output_file"
+}
 
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
@@ -65,31 +88,22 @@ run_safety_and_backup() {
         exit 1
     fi
 
-    # Target Ports: 22, 80, 8443, 8444, 8445, 8080, 8082, 3128, 8888, 109, 143, 81, 8081
-    local used_ports=$(ss -tuln | grep -E ':(22|80|8443|8444|8445|8080|8082|3128|8888|109|143|81|8081|2222)\s' || true)
+    # Target Ports: 22, 80, 8443, 8444, 8445 (removed dropbear & squid ports)
+    local used_ports=$(ss -tuln | grep -E ':(22|80|8443|8444|8445|81|8081)\s' || true)
     if [ -n "$used_ports" ]; then
         print_warning "Some required application ports are already active on this host:"
         echo -e "${yell}$used_ports${NC}"
         echo ""
-      #  read -p "Proceed and overwrite settings anyway? (y/N): " -n 1 -r
-       # echo
-      #  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-     #       print_error "Installation aborted by user due to running resource collisions."
-      #      exit 1
-        #fi
     fi
 
     print_info "Creating systemic backup in $BACKUP_DIR ..."
     mkdir -p "$BACKUP_DIR"
     
     cp /etc/ssh/sshd_config "$BACKUP_DIR/sshd_config.backup" 2>/dev/null || true
-    cp /etc/default/dropbear "$BACKUP_DIR/dropbear.backup" 2>/dev/null || true
     cp /etc/stunnel/stunnel.conf "$BACKUP_DIR/stunnel.conf.backup" 2>/dev/null || true
     cp /etc/default/stunnel4 "$BACKUP_DIR/stunnel4.backup" 2>/dev/null || true
-    cp /etc/squid/squid.conf "$BACKUP_DIR/squid.conf.backup" 2>/dev/null || true
     cp /etc/nginx/nginx.conf "$BACKUP_DIR/nginx.conf.backup" 2>/dev/null || true
     cp /etc/nginx/conf.d/status.conf "$BACKUP_DIR/nginx_status.backup" 2>/dev/null || true
-    cp /opt/ws-proxy/ws-proxy.js "$BACKUP_DIR/ws-proxy.js.backup" 2>/dev/null || true
     cp /etc/rc.local "$BACKUP_DIR/rc.local.backup" 2>/dev/null || true
     
     if command -v iptables-save &>/dev/null; then
@@ -101,14 +115,17 @@ run_safety_and_backup() {
 echo "=== System rollback in progress ==="
 
 [ -f "$BACKUP_DIR/sshd_config.backup" ] && cp "$BACKUP_DIR/sshd_config.backup" /etc/ssh/sshd_config && systemctl restart ssh 2>/dev/null
-[ -f "$BACKUP_DIR/dropbear.backup" ] && cp "$BACKUP_DIR/dropbear.backup" /etc/default/dropbear && systemctl restart dropbear 2>/dev/null
 [ -f "$BACKUP_DIR/stunnel.conf.backup" ] && cp "$BACKUP_DIR/stunnel.conf.backup" /etc/stunnel/stunnel.conf
 [ -f "$BACKUP_DIR/stunnel4.backup" ] && cp "$BACKUP_DIR/stunnel4.backup" /etc/default/stunnel4 && systemctl restart stunnel4 2>/dev/null
-[ -f "$BACKUP_DIR/squid.conf.backup" ] && cp "$BACKUP_DIR/squid.conf.backup" /etc/squid/squid.conf && systemctl restart squid 2>/dev/null
 [ -f "$BACKUP_DIR/nginx.conf.backup" ] && cp "$BACKUP_DIR/nginx.conf.backup" /etc/nginx/nginx.conf
 [ -f "$BACKUP_DIR/nginx_status.backup" ] && cp "$BACKUP_DIR/nginx_status.backup" /etc/nginx/conf.d/status.conf && systemctl restart nginx 2>/dev/null
 [ -f "$BACKUP_DIR/rc.local.backup" ] && cp "$BACKUP_DIR/rc.local.backup" /etc/rc.local && chmod +x /etc/rc.local
 
+# Stop and remove old services
+systemctl stop dropbear 2>/dev/null
+systemctl disable dropbear 2>/dev/null
+systemctl stop squid 2>/dev/null
+systemctl disable squid 2>/dev/null
 systemctl stop ws-proxy 2>/dev/null
 systemctl disable ws-proxy 2>/dev/null
 rm -f /etc/systemd/system/ws-proxy.service
@@ -135,7 +152,8 @@ install_base_packages() {
     apt dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || true
     apt-get remove --purge ufw firewalld exim4 -y 2>/dev/null || true
 
-    local packages="screen curl jq bzip2 gzip vnstat coreutils rsyslog iftop zip unzip git apt-transport-https build-essential net-tools wget gnupg gnupg2 iptables-persistent netfilter-persistent openssl ca-certificates nginx stunnel4 dropbear squid fail2ban"
+    # REMOVED: dropbear, squid from packages list
+    local packages="screen curl jq bzip2 gzip vnstat coreutils rsyslog iftop zip unzip git apt-transport-https build-essential net-tools wget gnupg gnupg2 iptables-persistent netfilter-persistent openssl ca-certificates nginx stunnel4 fail2ban"
     for pkg in $packages; do
         if ! dpkg -l | grep -qE "^ii|^hi" "$pkg"; then
             print_info "Installing $pkg..."
@@ -147,11 +165,7 @@ install_base_packages() {
         fi
     done
 
-    if ! command -v node &>/dev/null; then
-        print_info "Installing Node.js 20 LTS..."
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >> /dev/null 2>&1
-        apt install -y nodejs >> /dev/null 2>&1 || true
-    fi
+    # REMOVED: Node.js installation (moved to insshws.sh)
     print_success "Base packages installed"
 }
 
@@ -205,8 +219,26 @@ configure_ssh() {
     echo "Port 80" >> /etc/ssh/sshd_config
     echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+    
+    cat << 'EOF' >> /etc/ssh/sshd_config
 
-  #  echo "  " > /etc/ssh/ssh_banner
+    # --- MARCSCRIPT PROTOCOL COMPATIBILITY ENGINE ---
+    # Key Exchange Algorithms (Legacy + Modern)
+    KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1
+    
+    # Ciphers (Legacy + Modern)
+    Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc
+    
+    # MACs (Message Authentication Codes)
+    MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-sha1,hmac-md5
+    
+    # Host Key Algorithms
+    HostKeyAlgorithms ssh-ed25519,ssh-rsa,ssh-dss,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521
+    
+    # Public Key Algorithms
+    PubkeyAcceptedAlgorithms ssh-ed25519,ssh-rsa,ssh-dss,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521
+    EOF
+    
     cat > /etc/ssh/ssh_banner <<'EOF'
 <p style="text-align:center;">
 <span style="color:#00E5FF;"><big><b>🚀 MARCSCRIPT SSH XRAY VPN 🚀</b></big></span>
@@ -276,10 +308,10 @@ EOF
     
     echo "Banner /etc/ssh/ssh_banner" >> /etc/ssh/sshd_config
     # Backup first
-cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
 
-# Append clean, compatible algorithms safely
-cat << 'EOF' >> /etc/ssh/sshd_config
+    # Append clean, compatible algorithms safely
+    cat << 'EOF' >> /etc/ssh/sshd_config
 
 # --- MARCSCRIPT PROTOCOL COMPATIBILITY ENGINE ---
 KexAlgorithms +diffie-hellman-group-exchange-sha256
@@ -287,7 +319,6 @@ Ciphers +aes128-ctr,aes192-ctr,aes256-ctr
 HostKeyAlgorithms +ssh-rsa
 PubkeyAcceptedAlgorithms +ssh-rsa
 EOF
-
 
     # Validate configuration syntax cleanly
     sshd -t >> "$LOG_FILE" 2>&1 || {
@@ -410,406 +441,12 @@ EOF
 }
 
 # ============================================================
-# PROTOCOL 3: SSH+WS (Node.js WebSocket proxy)
+# REMOVED: configure_websocket() - Moved to insshws.sh
+# REMOVED: configure_squid() - Squid Proxy removed
+# REMOVED: configure_python_fallback() - No longer needed
+# REMOVED: fix_squid() - No longer needed
+# REMOVED: install_dropbear() - Dropbear removed
 # ============================================================
-configure_websocket() {
-    print_info "Configuring SSH+WS (ports 8080, 8082)..."
-    fuser -k 8080/tcp 2>/dev/null || true
-    fuser -k 8082/tcp 2>/dev/null || true
-    mkdir -p /opt/ws-proxy
-
-    cat > /opt/ws-proxy/ws-proxy.js <<'EOF'
-#!/usr/bin/env node
-const net = require('net');
-const http = require('http');
-const fs = require('fs');
-
-const SSH_HOST = '127.0.0.1';
-const SSH_PORT = 22;
-const WS_PORT = 8080;
-const LOG_FILE = '/var/log/ws-proxy.log';
-
-function log(msg) {
-    const ts = new Date().toISOString();
-    const line = `[${ts}] ${msg}\n`;
-    console.log(line.trim());
-    fs.appendFileSync(LOG_FILE, line, { flag: 'a' });
-}
-
-log('Starting SSH WebSocket Proxy...');
-const server = http.createServer();
-
-server.on('connect', (req, socket) => {
-    log(`CONNECT: ${req.url}`);
-    const ssh = net.connect(SSH_PORT, SSH_HOST, () => {
-        socket.write('HTTP/1.1 200 MARCSCRIPT\r\nProxy-Agent: MarcScript\r\n\r\n');
-        ssh.pipe(socket);
-        socket.pipe(ssh);
-    });
-    ssh.on('error', (e) => { log(`SSH error: ${e.message}`); socket.destroy(); });
-    socket.on('error', (e) => { log(`Socket error: ${e.message}`); ssh.destroy(); });
-});
-
-server.on('upgrade', (req, socket) => {
-    log(`WebSocket upgrade: ${req.headers.host}`);
-    const ssh = net.connect(SSH_PORT, SSH_HOST, () => {
-        socket.write('HTTP/1.1 101 MARCSCRIPT\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n');
-        ssh.pipe(socket);
-        socket.pipe(ssh);
-    });
-    ssh.on('error', (e) => { log(`WS SSH error: ${e.message}`); socket.destroy(); });
-});
-
-server.on('request', (req, res) => {
-    if (req.url === '/' || req.url === '/status') {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<html><head><title>SSH WebSocket Proxy</title></head>
-            <body><h1>🚀 SSH WebSocket Proxy</h1><p>Status: Running</p>
-            <p>Uptime: ${Math.floor(process.uptime())} s</p>
-            <p>SSH: ${SSH_HOST}:${SSH_PORT}</p>
-            <hr><small>MarcScript SSH VPN Proxy</small></body></html>`);
-    } else {
-        res.writeHead(404);
-        res.end('Not Found');
-    }
-});
-
-server.listen(WS_PORT, '0.0.0.0', () => log(`✅ WebSocket proxy on port ${WS_PORT}`));
-
-process.on('SIGTERM', () => { log('SIGTERM, shutting down...'); server.close(() => process.exit(0)); });
-process.on('SIGINT',  () => { log('SIGINT, shutting down...');  server.close(() => process.exit(0)); });
-process.on('uncaughtException', (e) => log(`Uncaught: ${e.message}`));
-EOF
-
-    chmod +x /opt/ws-proxy/ws-proxy.js
-
-    cat > /etc/systemd/system/ws-proxy.service <<'EOF'
-[Unit]
-Description=SSH WebSocket Proxy
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/node /opt/ws-proxy/ws-proxy.js
-Restart=always
-RestartSec=5
-User=root
-StandardOutput=journal
-StandardError=journal
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable ws-proxy 2>/dev/null || true
-    systemctl start ws-proxy 2>/dev/null || true
-
-    sleep 3
-    if systemctl is-active --quiet ws-proxy; then
-        print_success "SSH+WS on port 8080"
-    else
-        print_warning "WebSocket proxy failed on port 8080, trying 8082..."
-        sed -i 's/const WS_PORT = 8080/const WS_PORT = 8082/' /opt/ws-proxy/ws-proxy.js
-        systemctl restart ws-proxy
-        if systemctl is-active --quiet ws-proxy; then
-            print_success "SSH+WS on port 8082"
-        else
-            print_error "WebSocket proxy failed on all ports"
-        fi
-    fi
-}
-
-# ============================================================
-# PROTOCOL 4: Squid Proxy (Debian/Ubuntu Compatible)
-# ============================================================
-configure_squid() {
-    print_info "Configuring Squid proxy (3128, 8082, 8888)..."
-    
-    # Detect OS for package differences
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS=$ID
-        VER=$VERSION_ID
-    else
-        OS="unknown"
-    fi
-    
-    # Complete cleanup of old squid
-    print_info "Cleaning up old squid installation..."
-    systemctl stop squid 2>/dev/null || true
-    systemctl disable squid 2>/dev/null || true
-    pkill -9 squid 2>/dev/null || true
-    killall -9 squid 2>/dev/null || true
-    rm -f /run/squid.pid 2>/dev/null || true
-    rm -f /var/run/squid.pid 2>/dev/null || true
-    rm -rf /var/spool/squid/* 2>/dev/null || true
-    rm -rf /var/log/squid/* 2>/dev/null || true
-    
-    # Remove and reinstall squid
-    print_info "Reinstalling squid..."
-    apt remove --purge squid -y 2>/dev/null || true
-    apt autoremove -y 2>/dev/null || true
-    apt autoclean -y 2>/dev/null || true
-    apt update -y 2>/dev/null || true
-    apt install -y squid 2>/dev/null || {
-        print_error "Failed to install squid"
-        return 1
-    }
-    
-    # Create clean config with OS-specific adjustments (No deprecated directives)
-    print_info "Creating squid configuration..."
-    cat > /etc/squid/squid.conf <<'EOF'
-# Squid Proxy Config - Optimized for Squid 7+
-http_port 3128
-http_port 8082
-http_port 8888
-
-# Use 'all' instead of '0.0.0.0/0' for newer squid versions
-acl all src all
-http_access allow all
-
-# Cache settings
-cache_dir ufs /var/spool/squid 100 16 256
-cache_mem 64 MB
-maximum_object_size_in_memory 32 KB
-maximum_object_size 1024 MB
-
-# Performance
-forwarded_for off
-request_header_access X-Forwarded-For deny all
-visible_hostname localhost
-dns_nameservers 8.8.8.8 1.1.1.1
-
-# Security and performance
-via off
-httpd_suppress_version_string on
-EOF
-
-    # Fix permissions
-    mkdir -p /var/spool/squid
-    mkdir -p /var/log/squid
-    chown -R proxy:proxy /var/spool/squid 2>/dev/null || true
-    chown -R proxy:proxy /var/log/squid 2>/dev/null || true
-    
-    # Write a clean systemd service file so it handles initialization automatically
-    cat > /etc/systemd/system/squid.service <<'EOF'
-[Unit]
-Description=Squid Web Proxy Server
-After=network.target
-
-[Service]
-Type=forking
-PIDFile=/run/squid.pid
-ExecStartPre=/usr/sbin/squid --foreground -z
-ExecStart=/usr/sbin/squid -f /etc/squid/squid.conf
-ExecReload=/bin/kill -HUP $MAINPID
-ExecStop=/bin/kill -TERM $MAINPID
-KillMode=process
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    # Reload systemd and start squid
-    systemctl daemon-reload
-    systemctl stop squid 2>/dev/null || true
-    sleep 2
-    systemctl start squid 2>/dev/null || {
-        print_warning "Failed to start squid via systemd, trying manual fallback..."
-        /usr/sbin/squid -N -d1 2>/dev/null &
-        sleep 3
-    }
-    
-    # Enable squid
-    systemctl enable squid 2>/dev/null || true
-    
-    # Verify squid is running
-    sleep 2
-    if systemctl is-active --quiet squid 2>/dev/null || pgrep -x "squid" > /dev/null; then
-        print_success "Squid on ports 3128, 8082, 8888"
-        
-        # Test squid
-        if command -v curl &> /dev/null; then
-            if curl -x http://localhost:3128 http://google.com -I -s -o /dev/null -w "%{http_code}" | grep -q "200\|301\|302"; then
-                print_success "Squid proxy test passed"
-            else
-                print_warning "Squid is running but proxy test failed"
-            fi
-        fi
-    else
-        print_warning "Squid failed to start - using Python fallback"
-        configure_python_fallback
-    fi
-}
-
-# ============================================================
-# FALLBACK: Python HTTP Proxy (if squid fails)
-# ============================================================
-configure_python_fallback() {
-    print_info "Setting up Python HTTP proxy fallback..."
-    
-    # Kill any existing python proxies
-    pkill -f "http-proxy.py" 2>/dev/null || true
-    pkill -f "simple-proxy" 2>/dev/null || true
-    
-    # Create Python proxy script
-    cat > /usr/local/bin/http-proxy.py << 'PYPROXY'
-#!/usr/bin/env python3
-import http.server
-import socketserver
-import socket
-import threading
-import time
-
-class ProxyHandler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b'MarcScript HTTP Proxy Server\n')
-        self.wfile.write(b'Connected to: ')
-        self.wfile.write(self.path.encode())
-        self.wfile.write(b'\n')
-    
-    def do_CONNECT(self):
-        self.send_response(200)
-        self.end_headers()
-    
-    def log_message(self, format, *args):
-        return  # Suppress logs
-
-def run_proxy(port):
-    try:
-        with socketserver.TCPServer(("0.0.0.0", port), ProxyHandler) as httpd:
-            print(f"Proxy running on port {port}")
-            httpd.serve_forever()
-    except Exception as e:
-        print(f"Failed to start proxy on port {port}: {e}")
-
-# Start proxies on all ports
-ports = [3128, 8082, 8888]
-threads = []
-
-for port in ports:
-    thread = threading.Thread(target=run_proxy, args=(port,), daemon=True)
-    thread.start()
-    threads.append(thread)
-    time.sleep(0.5)
-
-print("All proxies started. Press Ctrl+C to stop.")
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    print("Shutting down...")
-PYPROXY
-
-    chmod +x /usr/local/bin/http-proxy.py
-    
-    # Start proxy in screen
-    screen -dmS proxy python3 /usr/local/bin/http-proxy.py
-    
-    sleep 2
-    
-    # Check if proxy is running
-    if pgrep -f "http-proxy.py" > /dev/null; then
-        print_success "Python proxy running on ports 3128, 8082, 8888"
-        
-        # Test the proxy
-        if command -v curl &> /dev/null; then
-            sleep 2
-            if curl -x http://localhost:3128 http://google.com -I -s -o /dev/null -w "%{http_code}" 2>/dev/null | grep -q "200\|301\|302"; then
-                print_success "Python proxy test passed"
-            else
-                print_warning "Python proxy is running but test failed"
-            fi
-        fi
-    else
-        print_error "Python proxy failed to start"
-        
-        # Last resort: simple netcat listener
-        print_info "Starting netcat fallback listeners..."
-        for port in 3128 8082 8888; do
-            screen -dmS proxy_$port nc -l -p $port -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nMarcScript Proxy Server"' 2>/dev/null || true
-        done
-        print_warning "Netcat fallback listeners started (limited functionality)"
-    fi
-}
-
-# ============================================================
-# Helper: Check and fix squid if broken
-# ============================================================
-fix_squid() {
-    print_info "Checking squid installation..."
-    
-    if ! command -v squid &> /dev/null; then
-        print_warning "Squid not installed, installing..."
-        apt install -y squid 2>/dev/null || return 1
-    fi
-    
-    # Check config syntax
-    if ! squid -k parse 2>/dev/null; then
-        print_warning "Squid config has errors, fixing..."
-        # Use minimal config
-        cat > /etc/squid/squid.conf << 'EOF'
-http_port 3128
-http_port 8082
-http_port 8888
-acl all src all
-http_access allow all
-cache_dir ufs /var/spool/squid 100 16 256
-cache_mem 64 MB
-via off
-httpd_suppress_version_string on
-EOF
-        squid -z 2>/dev/null || true
-    fi
-    
-    return 0
-}
-
-# ============================================================
-# PROTOCOL 5: Dropbear
-# ============================================================
-install_dropbear() {
-    print_info "Installing Dropbear (109, 143)..."
-    apt install --reinstall -y dropbear 2>/dev/null || apt install -y dropbear
-    
-    if [ ! -f /etc/dropbear/dropbear_rsa_host_key ]; then
-        print_info "Generating Dropbear host keys..."
-        dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key 2>/dev/null
-        dropbearkey -t dss -f /etc/dropbear/dropbear_dss_host_key 2>/dev/null
-        dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key 2>/dev/null
-    fi
-    
-    cat > /etc/default/dropbear <<-DROPBEAR
-NO_START=0
-DROPBEAR_PORT=109
-DROPBEAR_EXTRA_ARGS="-p 143"
-DROPBEAR_BANNER="/etc/ssh/ssh_banner"
-DROPBEAR_RECEIVE_WINDOW=65536
-DROPBEAR
-    
-    echo "/bin/false" >> /etc/shells 2>/dev/null || true
-    echo "/usr/sbin/nologin" >> /etc/shells 2>/dev/null || true
-    
-    systemctl enable dropbear 2>/dev/null || true
-    systemctl restart dropbear 2>/dev/null || true
-    
-    sleep 2
-    if systemctl is-active --quiet dropbear; then
-        print_success "Dropbear on ports 109, 143"
-        ss -tlnp | grep -E ':(109|143)\s' || true
-    else
-        print_error "Dropbear failed to start!"
-        journalctl -u dropbear --no-pager -n 10
-        exit 1
-    fi
-}
 
 # ============================================================
 # PROTOCOL 6: BADVPN UDP Gateway
@@ -817,7 +454,8 @@ DROPBEAR
 install_badvpn() {
     print_info "Installing BADVPN UDP gateway (7100-7400)..."
     cd /tmp
-    wget -q -O /usr/bin/badvpn-udpgw "https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main/ssh/newudpgw"
+    # Download from private repo
+    download_private "ssh/newudpgw" "/usr/bin/badvpn-udpgw"
     chmod +x /usr/bin/badvpn-udpgw
     for port in 7100 7200 7300 7400; do
         if ! grep -q "badvpn$((port/100))" /etc/rc.local; then
@@ -842,7 +480,7 @@ maxretry  = 5
 backend   = polling
 [sshd]
 enabled   = true
-port      = ssh,8443,8444,8445,8080,8082
+port      = ssh,8443,8444,8445
 logpath   = %(sshd_log)s
 maxretry  = 5
 F2B
@@ -951,12 +589,13 @@ EOF
 }
 
 download_scripts() {
-    print_info "Downloading management scripts..."
-    GHBASE="https://raw.githubusercontent.com/Jhon-mark23/vpn/refs/heads/main"
+    print_info "Downloading management scripts from private repo..."
     cd /usr/bin
 
     dl() {
-        wget -q -O "$1" "$GHBASE/$2" && chmod +x "$1" && sed -i 's/\r$//' "$1"
+        download_private "$2" "$1"
+        chmod +x "$1"
+        sed -i 's/\r$//' "$1"
     }
 
     dl menu menu/menu.sh
@@ -998,14 +637,10 @@ echo "════════════════════════�
 echo ""
 svc() { systemctl is-active --quiet "$1" && echo -e "\033[1;32m● Running\033[0m" || echo -e "\033[1;31m● Not Running\033[0m"; }
 printf "%-28s : %s\n" "SSH (22, 80)" "$(svc ssh)"
-printf "%-28s : %s\n" "Dropbear (109, 143)" "$(svc dropbear)"
 printf "%-28s : %s\n" "Stunnel4 (8443,8444,8445)" "$(svc stunnel4)"
 printf "%-28s : %s\n" "Nginx (81, 8081)" "$(svc nginx)"
-printf "%-28s : %s\n" "Squid Proxy (3128)" "$(svc squid)"
 printf "%-28s : %s\n" "Fail2Ban" "$(svc fail2ban)"
-[ -f /etc/systemd/system/ws-proxy.service ] && printf "%-28s : %s\n" "WS-Proxy (Node.js)" "$(svc ws-proxy)"
-[ -f /etc/systemd/system/ws-dropbear.service ] && printf "%-28s : %s\n" "WS-Dropbear (2095)" "$(svc ws-dropbear)"
-[ -f /etc/systemd/system/ws-stunnel.service ] && printf "%-28s : %s\n" "WS-Stunnel (700)" "$(svc ws-stunnel)"
+[ -f /etc/systemd/system/ws-proxy.service ] && printf "%-28s : %s\n" "WS-Proxy (8080)" "$(svc ws-proxy)"
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
 echo "  VPS IP: $(curl -s ifconfig.me || echo 'unknown')"
@@ -1026,11 +661,8 @@ Server IP: $VPS_IP
 PROTOCOLS:
 1. SSH Direct: Port 22, 80
 2. SSH+SSL (Stunnel): Port 8443, 8444
-3. SSH+WebSocket: Port 8080, 8082
-4. SSH+WS+SSL: Port 8445
-5. Dropbear SSH: Port 109, 143
-6. Squid Proxy: Port 3128, 8082, 8888
-7. BADVPN UDP: Port 7100-7400 (local)
+3. SSH+WS+SSL: Port 8445
+4. BADVPN UDP: Port 7100-7400 (local)
 
 MANAGEMENT:
 - Type 'menu' to access management panel
@@ -1054,11 +686,15 @@ END
 
 restart_services() {
     print_info "Restarting all services..."
-    for svc in nginx cron ssh dropbear stunnel4 ws-proxy ws-dropbear ws-stunnel squid fail2ban; do
+    for svc in nginx cron ssh stunnel4 fail2ban; do
         if systemctl list-unit-files | grep -q "^${svc}.service"; then
             systemctl restart $svc 2>/dev/null && print_success "Restarted $svc"
         fi
     done
+    # Restart ws-proxy if exists (from insshws.sh)
+    if systemctl list-unit-files | grep -q "^ws-proxy.service"; then
+        systemctl restart ws-proxy 2>/dev/null && print_success "Restarted ws-proxy"
+    fi
     for port in 7100 7200 7300 7400; do
         screen -dmS badvpn$((port/100)) badvpn-udpgw --listen-addr 127.0.0.1:$port --max-clients 50 2>/dev/null || true
     done
@@ -1087,10 +723,7 @@ display_final_status() {
     echo "   🔹 SSH Direct      : $VPS_IP:22"
     echo "   🔹 SSH Direct 2    : $VPS_IP:80"
     echo "   🔹 SSH + SSL       : $VPS_IP:8443, 8444"
-    echo "   🔹 SSH + WS        : ws://$VPS_IP:8080"
     echo "   🔹 SSH + WS + SSL  : wss://$VPS_IP:8445"
-    echo "   🔹 Dropbear SSH    : $VPS_IP:109, 143"
-    echo "   🔹 Squid Proxy     : $VPS_IP:3128, 8082, 8888"
     echo "   🔹 BADVPN UDP      : 127.0.0.1:7100-7400"
     echo ""
     echo "🔧 MANAGEMENT COMMANDS:"
@@ -1103,15 +736,11 @@ display_final_status() {
     echo "📁 CONFIGURATION FILES:"
     echo "   SSH Config       : /etc/ssh/sshd_config"
     echo "   Stunnel Config   : /etc/stunnel/stunnel.conf"
-    echo "   WS Proxy         : /opt/ws-proxy/ws-proxy.js"
-    echo "   Squid Config     : /etc/squid/squid.conf"
-    echo "   Dropbear Config  : /etc/default/dropbear"
+    echo "   Nginx Config     : /etc/nginx/nginx.conf"
     echo ""
     echo "📋 LOG FILES:"
     echo "   SSH Logs         : journalctl -u ssh"
-    echo "   Dropbear Logs    : journalctl -u dropbear"
     echo "   Stunnel Logs     : /var/log/stunnel4/stunnel.log"
-    echo "   WS Proxy Logs    : /var/log/ws-proxy.log"
     echo ""
     echo "═══════════════════════════════════════════════════════════════"
     echo "  💡 VPS IP: $VPS_IP"
@@ -1125,11 +754,8 @@ main() {
     clear
     echo "==========================================="
     echo "   MARCSCRIPT SSH VPN INSTALLER"
-    echo "   (All Protocols Fixed & Working)"
+    echo "   (SSH + Stunnel + BADVPN - Lightweight)"
     echo "==========================================="
-#   read -p "Continue? (y/N): " -n 1 -r
-#   echo
-#   if [[ ! $REPLY =~ ^[Yy]$ ]]; then exit 0; fi
 
     detect_os
     setup_environment
@@ -1138,9 +764,9 @@ main() {
     setup_rclocal
     configure_ssh
     configure_stunnel
-    configure_websocket
-    configure_squid
-    install_dropbear
+    # REMOVED: configure_websocket (moved to insshws.sh)
+    # REMOVED: configure_squid
+    # REMOVED: install_dropbear
     install_badvpn
     configure_nginx
     install_fail2ban
