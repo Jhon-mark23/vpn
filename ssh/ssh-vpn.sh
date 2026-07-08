@@ -155,15 +155,70 @@ EOF
 
     # Banner
     cat > /etc/ssh/ssh_banner <<'BEOF'
-===========================================
-   MARCSCRIPT VPN SERVER
-   FAST • STABLE • SECURE
-===========================================
-   SSH Direct     : Port 22, 80
-   SSH + SSL      : Port 8443, 8444
-   SSH + WS       : Port 8080
-   SSH + WS + SSL : Port 8445, 9443
-===========================================
+<p style="text-align:center;">
+<span style="color:#00E5FF;"><big><b>🚀 MARCSCRIPT SSH XRAY VPN 🚀</b></big></span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">
+<big><b>FAST • STABLE • SECURE</b></big>
+</span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#00FF66;"><b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b></span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#00FFFF;"><b>📡 AVAILABLE PROTOCOLS</b></span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🔐 SSH DIRECT</span><br>
+<span style="color:#00E5FF;">Port : 22</span><br>
+<span style="color:#FFD600;">HTTP Custom users: If Port 22 fails, use HTTP Injector.</span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🔒 SSH + SSL (Stunnel)</span><br>
+<span style="color:#00FF66;">Port : 8443</span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🌐 SSH + WebSocket</span><br>
+<span style="color:#29B6F6;">Port : 8080</span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🔐 SSH + WS + SSL</span><br>
+<span style="color:#00BCD4;">Port : 8445</span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🚀 XRAY TLS</span><br>
+<span style="color:#00FF80;">Port : 443</span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🚀 XRAY NONE TLS</span><br>
+<span style="color:#FFD54F;">Port : 80</span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#00FF66;"><b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b></span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#00FFFF;">
+<big><b>⚡ MARCSCRIPT VPN ⚡</b></big>
+</span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#FFD54F;">
+Facebook • Telegram • Fast Support
+</span>
+</p>
 BEOF
 
     # Test config
@@ -359,6 +414,7 @@ download_scripts() {
     dl autokill "ssh/autokill.sh"
     dl ceklim   "ssh/ceklim.sh"
     dl tendang  "ssh/tendang.sh"
+    dl set-api  "api/setup-api.sh"
     
     cd /
     print_ok "Scripts downloaded"
