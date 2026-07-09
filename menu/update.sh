@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
 # MARCSCRIPT VPN SYSTEM - UPDATE MANAGER
-# Version: 2.0 (Private Repo + Token Auth)
+# Version: 3.0 (Private Repo + Token Auth + Full File Sync)
 # ============================================================
 
 clear
@@ -125,6 +125,59 @@ create_backup() {
 
 # ---------- UPDATE FUNCTIONS ----------
 
+# Update ALL menu files (ignoring .bak)
+sync_menu_files() {
+    echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${purple}║${white}              🔄 SYNCING ALL MENU FILES                      ${purple}║${NC}"
+    echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    # Define all menu files (excluding .bak)
+    declare -A MENU_FILES=(
+        ["/usr/bin/auto-reboot"]="menu/auto-reboot.sh"
+        ["/usr/bin/bw"]="menu/bw.sh"
+        ["/usr/bin/clearcache"]="menu/clearcache.sh"
+        ["/usr/bin/m-banner"]="menu/m-banner.sh"
+        ["/usr/bin/m-dns"]="menu/m-dns.sh"
+        ["/usr/bin/m-domain"]="menu/m-domain.sh"
+        ["/usr/bin/m-sshovpn"]="menu/m-sshovpn.sh"
+        ["/usr/bin/m-ssws"]="menu/m-ssws.sh"
+        ["/usr/bin/m-system"]="menu/m-system.sh"
+        ["/usr/bin/m-trojan"]="menu/m-trojan.sh"
+        ["/usr/bin/m-vless"]="menu/m-vless.sh"
+        ["/usr/bin/m-vmess"]="menu/m-vmess.sh"
+        ["/usr/bin/m-webmin"]="menu/m-webmin.sh"
+        ["/usr/bin/m-xray"]="menu/m-xray.sh"
+        ["/usr/bin/menu"]="menu/menu.sh"
+        ["/usr/bin/restart"]="menu/restart.sh"
+        ["/usr/bin/running"]="menu/running.sh"
+        ["/usr/bin/tcp"]="menu/tcp.sh"
+        ["/usr/bin/update"]="menu/update.sh"
+        ["/usr/bin/versi"]="menu/versi"
+    )
+    
+    total=${#MENU_FILES[@]}
+    count=0
+    failed=0
+    
+    for dest in "${!MENU_FILES[@]}"; do
+        remote="${MENU_FILES[$dest]}"
+        count=$((count + 1))
+        echo -ne "[${count}/${total}] "
+        dl "$dest" "$remote"
+        if [ $? -ne 0 ]; then
+            failed=$((failed + 1))
+        fi
+    done
+    
+    echo ""
+    if [ $failed -eq 0 ]; then
+        success_msg "All menu files synced successfully (${total} files)"
+    else
+        error_msg "$failed out of ${total} files failed to sync"
+    fi
+}
+
 # Update ALL services (full reinstall)
 update_all() {
     echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
@@ -150,71 +203,6 @@ update_all() {
     
     success_msg "Full reinstall initiated in screen session 'setup'"
     echo "Use: screen -r setup  to view progress"
-}
-
-# Update Menu scripts only
-update_menu() {
-    echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${purple}║${white}              🔄 UPDATING MENU SCRIPTS                      ${purple}║${NC}"
-    echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    
-    cd /usr/bin || return
-    
-    # Main menu
-    dl "/usr/bin/menu" "menu/menu.sh"
-    
-    # Sub menus
-    dl "/usr/bin/m-xray" "menu/m-xray.sh"
-    dl "/usr/bin/m-sshovpn" "menu/m-sshovpn.sh"
-    dl "/usr/bin/m-vmess" "menu/m-vmess.sh"
-    dl "/usr/bin/m-vless" "menu/m-vless.sh"
-    dl "/usr/bin/m-trojan" "menu/m-trojan.sh"
-    dl "/usr/bin/m-ssws" "menu/m-ssws.sh"
-    dl "/usr/bin/m-system" "menu/m-system.sh"
-    dl "/usr/bin/running" "menu/running.sh"
-    dl "/usr/bin/clearcache" "menu/clearcache.sh"
-    
-    # SSH management scripts
-    dl "/usr/bin/usernew" "ssh/usernew.sh"
-    dl "/usr/bin/trial" "ssh/trial.sh"
-    dl "/usr/bin/renew" "ssh/renew.sh"
-    dl "/usr/bin/hapus" "ssh/hapus.sh"
-    dl "/usr/bin/cek" "ssh/cek.sh"
-    dl "/usr/bin/member" "ssh/member.sh"
-    dl "/usr/bin/delete" "ssh/delete.sh"
-    dl "/usr/bin/autokill" "ssh/autokill.sh"
-    dl "/usr/bin/ceklim" "ssh/ceklim.sh"
-    dl "/usr/bin/tendang" "ssh/tendang.sh"
-    dl "/usr/bin/sshws" "ssh/sshws.sh"
-    dl "/usr/bin/add-host" "ssh/add-host.sh"
-    dl "/usr/bin/xp" "ssh/xp.sh"
-    dl "/usr/bin/speedtest" "ssh/speedtest_cli.py"
-    
-    # Xray management scripts
-    dl "/usr/bin/add-ws" "xray/add-ws.sh"
-    dl "/usr/bin/add-vless" "xray/add-vless.sh"
-    dl "/usr/bin/add-tr" "xray/add-tr.sh"
-    dl "/usr/bin/add-ssws" "xray/add-ssws.sh"
-    dl "/usr/bin/del-ws" "xray/del-ws.sh"
-    dl "/usr/bin/del-vless" "xray/del-vless.sh"
-    dl "/usr/bin/del-tr" "xray/del-tr.sh"
-    dl "/usr/bin/del-ssws" "xray/del-ssws.sh"
-    dl "/usr/bin/renew-ws" "xray/renew-ws.sh"
-    dl "/usr/bin/renew-vless" "xray/renew-vless.sh"
-    dl "/usr/bin/renew-tr" "xray/renew-tr.sh"
-    dl "/usr/bin/renew-ssws" "xray/renew-ssws.sh"
-    dl "/usr/bin/cek-ws" "xray/cek-ws.sh"
-    dl "/usr/bin/cek-vless" "xray/cek-vless.sh"
-    dl "/usr/bin/cek-tr" "xray/cek-tr.sh"
-    dl "/usr/bin/cek-ssws" "xray/cek-ssws.sh"
-    dl "/usr/bin/trialvmess" "xray/trialvmess.sh"
-    dl "/usr/bin/trialvless" "xray/trialvless.sh"
-    dl "/usr/bin/trialtrojan" "xray/trialtrojan.sh"
-    dl "/usr/bin/trialssws" "xray/trialssws.sh"
-    
-    cd /
-    success_msg "Menu scripts updated"
 }
 
 # Update SSH services
@@ -567,17 +555,24 @@ main_menu() {
     echo -e "${purple}║${white}     ██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝  ${purple}║${NC}"
     echo -e "${purple}║${white}     ╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗${purple}║${NC}"
     echo -e "${purple}║${white}      ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝${purple}║${NC}"
-    echo -e "${purple}║${cyan}                    • UPDATE MANAGER v2.0 •                  ${purple}║${NC}"
+    echo -e "${purple}║${cyan}                    • UPDATE MANAGER v3.0 •                  ${purple}║${NC}"
     echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
+    # Show current version
+    if [ -f "/usr/bin/versi" ]; then
+        current_ver=$(cat /usr/bin/versi 2>/dev/null || echo "Unknown")
+        echo -e "  ${cyan}Current Version: ${green}$current_ver${NC}"
+    fi
+    echo ""
+    
     echo -e "${cyan}┌─────────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${cyan}│${white}  [1]  UPDATE ALL (Full Reinstall)                      ${cyan}│${NC}"
-    echo -e "${cyan}│${white}  [2]  UPDATE SSH Services Only                        ${cyan}│${NC}"
-    echo -e "${cyan}│${white}  [3]  UPDATE Xray Services Only                       ${cyan}│${NC}"
-    echo -e "${cyan}│${white}  [4]  UPDATE Python WS Proxy Only                     ${cyan}│${NC}"
-    echo -e "${cyan}│${white}  [5]  UPDATE DNSTT Services Only                      ${cyan}│${NC}"
-    echo -e "${cyan}│${white}  [6]  UPDATE Menu Scripts Only                        ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [1]  SYNC ALL MENU FILES (Ignore .bak)                ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [2]  UPDATE ALL (Full Reinstall)                      ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [3]  UPDATE SSH Services Only                        ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [4]  UPDATE Xray Services Only                       ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [5]  UPDATE Python WS Proxy Only                     ${cyan}│${NC}"
+    echo -e "${cyan}│${white}  [6]  UPDATE DNSTT Services Only                      ${cyan}│${NC}"
     echo -e "${cyan}│${white}  [7]  CHECK FOR UPDATES & Service Status              ${cyan}│${NC}"
     echo -e "${cyan}│${white}  [8]  RESTORE FROM BACKUP                             ${cyan}│${NC}"
     echo -e "${cyan}│${white}  [9]  VIEW UPDATE LOGS                                ${cyan}│${NC}"
@@ -589,12 +584,12 @@ main_menu() {
     echo ""
     
     case $choice in
-        1) update_all ;;
-        2) update_ssh ;;
-        3) update_xray ;;
-        4) update_wsproxy ;;
-        5) update_dnstt ;;
-        6) update_menu ;;
+        1) sync_menu_files ;;
+        2) update_all ;;
+        3) update_ssh ;;
+        4) update_xray ;;
+        5) update_wsproxy ;;
+        6) update_dnstt ;;
         7) check_updates ;;
         8) restore_backup ;;
         9) view_logs ;;
