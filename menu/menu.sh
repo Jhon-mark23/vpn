@@ -18,7 +18,7 @@ NC='\033[0m'
 
 # ---------- SYSTEM INFO ----------
 domain=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "Not Set")
-PUBKEY=$(cat /etc/slowdns/server.pub 2>/dev/null || echo "Not Generated")
+PUBKEY=$(cat /etc/dnstt/private.key 2>/dev/null || echo "Not Generated")
 nsdomain="ns.${domain}"
 os_name=$(hostnamectl 2>/dev/null | grep "Operating System" | cut -d: -f2 | xargs)
 uptime_info=$(uptime -p 2>/dev/null | cut -d' ' -f2-)

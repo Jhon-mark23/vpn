@@ -53,7 +53,7 @@ XRAY_STATUS=$(svc xray 2>/dev/null)
 NGINX_STATUS=$(svc nginx 2>/dev/null)
 FAIL2BAN_STATUS=$(svc fail2ban 2>/dev/null)
 CRON_STATUS=$(svc cron 2>/dev/null)
-DNSTT_STATUS=$(svc server-sldns 2>/dev/null)
+DNSTT_STATUS=$(svc dnstt-server 2>/dev/null)
 
 # ---------- PORT CHECK ----------
 port_check() {

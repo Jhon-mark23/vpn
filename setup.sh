@@ -11,14 +11,19 @@
 #   5. Install SSH‑VPN (ssh-vpn.sh)
 #   6. Install Python WS proxy (insshws.sh)
 #   7. Install Xray (ins-xray.sh)
-#   8. Install DNSTT (install-dnstt.sh)
+#   8. Install DNSTT (install-dnstt.sh) - Handles everything
 #
 # Author: MarcScript
-# Version: 2.5 (Private Repo with GITHUB_TOKEN)
+# Version: 2.6 (Private Repo with GITHUB_TOKEN)
 # ============================================================
 
 # ---------- GITHUB TOKEN ----------
 gtoken=$(cat /root/token 2>/dev/null || cat /root/token.txt 2>/dev/null)
+
+if [[ -z "$gtoken" ]]; then
+    echo -e "\e[1;31mERROR: GitHub token not found in /root/token\e[0m"
+    exit 1
+fi
 
 echo "setup install ${gtoken}"
 GITHUB_TOKEN="$gtoken"
@@ -74,7 +79,7 @@ show_banner() {
     echo -e "${BPurple}║${BWhite}     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║${BPurple}║${NC}"
     echo -e "${BPurple}║${BWhite}     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║${BPurple}║${NC}"
     echo -e "${BPurple}║${BWhite}     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝${BPurple}║${NC}"
-    echo -e "${BPurple}║${BCyan}           ALL-IN-ONE VPN INSTALLER v2.5                  ${BPurple}║${NC}"
+    echo -e "${BPurple}║${BCyan}           ALL-IN-ONE VPN INSTALLER v2.6                  ${BPurple}║${NC}"
     echo -e "${BPurple}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -114,6 +119,7 @@ clean_old_services() {
     systemctl stop client-sldns 2>/dev/null || true
     systemctl stop dnstt-server 2>/dev/null || true
     systemctl stop dnstt-client 2>/dev/null || true
+    systemctl stop dnstt 2>/dev/null || true
     
     # Kill processes
     pkill -f nginx 2>/dev/null || true
@@ -127,6 +133,10 @@ clean_old_services() {
     pkill -f sldns-client 2>/dev/null || true
     pkill -f dnstt-server 2>/dev/null || true
     pkill -f dnstt-client 2>/dev/null || true
+    
+    # Kill processes on port 5300
+    fuser -k 5300/udp 2>/dev/null || true
+    fuser -k 5300/tcp 2>/dev/null || true
     
     # Remove DNSTT configs
     rm -rf /etc/slowdns 2>/dev/null || true
@@ -154,6 +164,8 @@ clean_old_services() {
     rm -f /usr/local/bin/ws-stunnel 2>/dev/null || true
     rm -f /usr/local/bin/xray 2>/dev/null || true
     rm -f /usr/local/bin/create-cert.sh 2>/dev/null || true
+    rm -f /usr/local/bin/dnstt-server 2>/dev/null || true
+    rm -f /usr/local/bin/dnstt-client 2>/dev/null || true
     
     # Remove menu scripts
     rm -f /usr/bin/menu 2>/dev/null || true
@@ -168,8 +180,11 @@ clean_old_services() {
     # Clean iptables rules (DNSTT related)
     print_info "Cleaning iptables rules..."
     iptables -D INPUT -p udp --dport 5300 -j ACCEPT 2>/dev/null || true
+    iptables -D INPUT -p tcp --dport 5300 -j ACCEPT 2>/dev/null || true
+    iptables -D INPUT -p tcp --dport 5353 -j ACCEPT 2>/dev/null || true
     iptables -D INPUT -p tcp --dport 8443 -j ACCEPT 2>/dev/null || true
     iptables -t nat -D PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 2>/dev/null || true
+    iptables -t nat -D PREROUTING -p tcp --dport 53 -j REDIRECT --to-ports 5353 2>/dev/null || true
     iptables -D INPUT -p udp --dport 443 -j ACCEPT 2>/dev/null || true
     
     # Save iptables
@@ -230,11 +245,10 @@ Banner /etc/ssh/ssh_banner
 Subsystem sftp /usr/lib/openssh/sftp-server
 EOF
 
-
     # Restart SSH
     systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     
-    print_success "SSH secured on ports 22, 2269"
+    print_success "SSH secured on ports 22, 2222, 2269"
 }
 
 # ============================================================
@@ -443,11 +457,25 @@ sed -i 's/\r$//' /root/ins-xray.sh
 chmod +x /root/ins-xray.sh
 bash /root/ins-xray.sh
 
-# DNSTT (UDP + DoH)
+# DNSTT - Using install-dnstt.sh (handles everything)
+print_info "Installing DNSTT via install-dnstt.sh..."
 download_private "dnstt/install-dnstt.sh" "/root/install-dnstt.sh"
 sed -i 's/\r$//' /root/install-dnstt.sh
 chmod +x /root/install-dnstt.sh
+
+# Pass domain as environment variable
+export DOMAIN="$PREVIOUS_DOMAIN"
+export NS_DOMAIN="ns.${PREVIOUS_DOMAIN}"
+
+# Run DNSTT installer
 bash /root/install-dnstt.sh
+
+# Check if DNSTT installed successfully
+if systemctl is-active --quiet dnstt 2>/dev/null; then
+    print_success "DNSTT installed and running"
+else
+    print_warning "DNSTT may not be running. Check with: systemctl status dnstt"
+fi
 
 # ============================================================
 # FINALIZE
@@ -491,7 +519,16 @@ echo -e "   ${BGreen}create${NC}       - Create SSH user"
 echo -e "   ${BGreen}vpn-status${NC}   - Check service status"
 echo ""
 
+# Check if DNSTT management scripts exist
+if [ -f "/usr/local/bin/dnstt-status" ]; then
+    echo -e "   ${BGreen}dnstt-status${NC} - Check DNSTT status"
+fi
+if [ -f "/usr/local/bin/dnstt-client" ]; then
+    echo -e "   ${BGreen}dnstt-client${NC} - Show DNSTT client config"
+fi
+echo ""
+
 secs_to_human "$(($(date +%s) - ${start}))" | tee -a log-install.txt
 
-rm -f /root/setup.sh /root/ins-xray.sh /root/insshws.sh /root/ssh-vpn.sh /root/create-cert.sh /root/install-dnstt.sh 2>/dev/null
+rm -f /root/setup.sh /root/ins-xray.sh /root/insshws.sh /root/ssh-vpn.sh /root/create-cert.sh /root/install-dnstt.sh /root/cf 2>/dev/null
 exit 0
