@@ -28,6 +28,7 @@ status_icon() {
 # ---------- SYSTEM INFO ----------
 domain=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "Not Set")
 PUBKEY=$(cat /etc/dnstt/private.pub 2>/dev/null || echo "Not Generated")
+sver=$(cat /usr/bin/versi 2>/dev/null || echo "Unknown")
 nsdomain="ns.${domain}"
 os_name=$(hostnamectl 2>/dev/null | grep "Operating System" | cut -d: -f2 | xargs)
 uptime_info=$(uptime -p 2>/dev/null | cut -d' ' -f2-)
@@ -74,7 +75,7 @@ echo ""
 
 # ---------- FOOTER ----------
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e " ${cyan}Client:${NC} ${white}MarcScript${NC} | ${cyan}Expiry:${NC} ${green}${Exp2}${NC}"
+echo -e "  ${cyan}Version:${NC} ${white}${sver}${NC} | ${cyan}Client:${NC} ${white}MarcScript${NC} | ${cyan}Expiry:${NC} ${green}${Exp2}${NC}"
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
