@@ -134,6 +134,7 @@ sync_menu_files() {
     
     # Define all menu files (excluding .bak)
     declare -A MENU_FILES=(
+        # Menu files
         ["/usr/bin/auto-reboot"]="menu/auto-reboot.sh"
         ["/usr/bin/bw"]="menu/bw.sh"
         ["/usr/bin/clearcache"]="menu/clearcache.sh"
