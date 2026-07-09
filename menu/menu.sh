@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
 # MARCSCRIPT VPN - MAIN MENU
-# Version: 3.0 (Simple + Updated Services)
+# Version: 3.1 (Simple + Service Status)
 # ============================================================
 
 MYIP=$(curl -sS ifconfig.me 2>/dev/null || echo "Unknown")
@@ -16,15 +16,30 @@ red='\033[1;31m'
 white='\033[1;37m'
 NC='\033[0m'
 
+# ---------- SERVICE STATUS FUNCTION ----------
+status_icon() {
+    if systemctl is-active --quiet "$1" 2>/dev/null; then
+        echo -e "${green}ON${NC}"
+    else
+        echo -e "${red}OFF${NC}"
+    fi
+}
+
 # ---------- SYSTEM INFO ----------
 domain=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "Not Set")
-PUBKEY=$(cat /etc/dnstt/private.key 2>/dev/null || echo "Not Generated")
+PUBKEY=$(cat /etc/dnstt/private.pub 2>/dev/null || echo "Not Generated")
 nsdomain="ns.${domain}"
 os_name=$(hostnamectl 2>/dev/null | grep "Operating System" | cut -d: -f2 | xargs)
 uptime_info=$(uptime -p 2>/dev/null | cut -d' ' -f2-)
 tram=$(free -m 2>/dev/null | awk 'NR==2{print $2}')
 uram=$(free -m 2>/dev/null | awk 'NR==2{print $3}')
 Exp2="Lifetime"
+
+# Get service status
+SSH_STATUS=$(status_icon ssh)
+XRAY_STATUS=$(status_icon xray)
+DNSTT_STATUS=$(status_icon dnstt)
+WS_STATUS=$(status_icon ws-8080)
 
 # ---------- HEADER ----------
 echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
@@ -40,7 +55,9 @@ printf "${cyan}│${NC} ${white}%-12s${NC}: %-44s ${cyan}│${NC}\n" "IP" "$MYIP
 printf "${cyan}│${NC} ${white}%-12s${NC}: %-44s ${cyan}│${NC}\n" "Domain" "$domain"
 printf "${cyan}│${NC} ${white}%-12s${NC}: %-44s ${cyan}│${NC}\n" "NS Domain" "$nsdomain"
 printf "${cyan}│${NC} ${white}%-12s${NC}: %-44s ${cyan}│${NC}\n" "Memory" "${uram}MB / ${tram}MB"
-printf "${cyan}│${NC} ${white}%-12s${NC}: %-44s ${cyan}│${NC}\n" "DNSTT Key" "$PUBKEY"
+printf "${cyan}│${NC} ${white}%-12s${NC}: %-44s ${cyan}│${NC}\n" "DNSTT Key" "${PUBKEY}"
+echo -e "${cyan}├─────────────────────────────────────────────────────────────┤${NC}"
+printf "${cyan}│${NC} ${white}%-12s${NC}: ${green}SSH${NC} %-8s ${white}XRAY${NC} %-8s ${white}DNSTT${NC} %-8s ${white}WS${NC} %-5s ${cyan}│${NC}\n" "Services" "$SSH_STATUS" "$XRAY_STATUS" "$DNSTT_STATUS" "$WS_STATUS"
 echo -e "${cyan}└─────────────────────────────────────────────────────────────┘${NC}"
 echo ""
 
@@ -96,7 +113,7 @@ case $opt in
         echo -e "${purple}║${white}                  SERVICE STATUS                       ${purple}║${NC}"
         echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
         echo ""
-        for svc in ssh stunnel4 nginx xray fail2ban ws-8080 ws-9443 ws-9445 server-sldns; do
+        for svc in ssh stunnel4 nginx xray fail2ban ws-8080 ws-9443 ws-9445 dnstt-server; do
             if systemctl is-active --quiet $svc 2>/dev/null; then
                 echo -e " ${green}●${NC} $svc ${green}Running${NC}"
             else

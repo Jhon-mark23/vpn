@@ -34,9 +34,9 @@ cpu_usage=$(top -bn1 2>/dev/null | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' 
 # ---------- SERVICE STATUS CHECK ----------
 svc() {
     if systemctl is-active --quiet "$1" 2>/dev/null; then
-        echo -e "${GREEN}RUNNING${NC}"
+        echo -e "${GREEN}ON${NC}"
     else
-        echo -e "${RED}STOPPED${NC}"
+        echo -e "${RED}OFF${NC}"
     fi
 }
 
