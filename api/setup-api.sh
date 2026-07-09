@@ -122,30 +122,16 @@ dl_private() {
     mkdir -p "$(dirname "$dest")" 2>/dev/null
     
     while [ $retry_count -lt $max_retries ]; do
-        # Try GitHub API to get raw content URL first
-        local raw_url=$(curl -sf -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github.v3.raw" \
-            "$GITHUB_API/$src?ref=main" 2>/dev/null | head -1)
-        
-        if [ -z "$raw_url" ]; then
-            # Fallback: try direct raw URL with token
-            if command -v wget &>/dev/null; then
-                wget --header="Authorization: token $GITHUB_TOKEN" \
-                    --no-check-certificate --timeout=30 --tries=3 \
-                    -q -O "$dest" "$GH_BASE/$src" 2>/dev/null
-                local status=$?
-            else
-                curl -sf -H "Authorization: token $GITHUB_TOKEN" \
-                    -H "Accept: application/vnd.github.v3.raw" \
-                    --connect-timeout 30 --max-time 60 \
-                    -o "$dest" "$GH_BASE/$src" 2>/dev/null
-                local status=$?
-            fi
+        # Try direct raw URL with token (simpler and more reliable)
+        if command -v wget &>/dev/null; then
+            wget --header="Authorization: token $GITHUB_TOKEN" \
+                --no-check-certificate --timeout=30 --tries=3 \
+                -q -O "$dest" "$GH_BASE/$src" 2>/dev/null
+            local status=$?
         else
-            # Download using the raw URL
-            curl -sf -H "Authorization: token $GITHUB_TOKEN" \
+            curl -sfL -H "Authorization: token $GITHUB_TOKEN" \
                 --connect-timeout 30 --max-time 60 \
-                -o "$dest" "$raw_url" 2>/dev/null
+                -o "$dest" "$GH_BASE/$src" 2>/dev/null
             local status=$?
         fi
         
@@ -196,8 +182,7 @@ echo -e "${cyan}Verifying repository access...${NC}"
 # Test token by checking a known file
 TEST_RESPONSE=$(curl -sf -w "%{http_code}" -o /dev/null \
     -H "Authorization: token $GITHUB_TOKEN" \
-    -H "Accept: application/vnd.github.v3.raw" \
-    "$GITHUB_API/api/ssh-api.sh?ref=main" 2>/dev/null)
+    "$GH_BASE/api/api.js" 2>/dev/null)
 
 if [ "$TEST_RESPONSE" != "200" ]; then
     echo -e "${red}✗ Cannot access private repository${NC}"
@@ -358,6 +343,7 @@ if [ "$TEST_RESPONSE" = "200" ] || [ "$TEST_RESPONSE" = "403" ] || [ "$TEST_RESP
     echo -e "${green}✓ API responded with HTTP $TEST_RESPONSE (OK)${NC}"
 else
     echo -e "${red}✗ API did not respond correctly (HTTP $TEST_RESPONSE)${NC}"
+    echo -e "  Check logs: pm2 logs vpn-api --lines 10"
 fi
 
 # ============================================================
