@@ -154,6 +154,7 @@ sync_menu_files() {
         ["/usr/bin/tcp"]="menu/tcp.sh"
         ["/usr/bin/update"]="menu/update.sh"
         ["/usr/bin/versi"]="menu/versi"
+        ["/usr/bin/set-api"]="api/setup-api.sh"
     )
     
     total=${#MENU_FILES[@]}
