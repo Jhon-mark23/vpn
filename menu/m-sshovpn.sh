@@ -5,7 +5,6 @@
 # ============================================================
 
 MYIP=$(wget -qO- ipv4.icanhazip.com 2>/dev/null || echo "Unknown")
-clear
 
 # ---------- COLOURS ----------
 GREEN='\033[0;32m'

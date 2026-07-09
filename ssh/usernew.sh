@@ -3,7 +3,7 @@
 # MARCSCRIPT VPN SYSTEM - CREATE SSH USER
 # ============================================================
 
-clear
+echo "hello"
 
 # ---------- COLOURS ----------
 GREEN='\033[0;32m'
@@ -22,14 +22,26 @@ done
 [ -z "$domen" ] && domen=$(wget -qO- ipv4.icanhazip.com)
 
 # Scraping active service configurations
-IP=$(wget -qO- ipv4.icanhazip.com || curl -sS ifconfig.me)
+IP=$(wget -qO- ipv4.icanhazip.com 2>/dev/null || curl -sS ifconfig.me 2>/dev/null || echo "Unknown")
 domain=$(cat /etc/xray/domain 2>/dev/null || cat /root/domain.txt 2>/dev/null || cat /root/domain 2>/dev/null || echo "None")
 opensh="22"
 portsshws="8080"
 wsssl="8445"
 ssl="8443"
-PUBKEY=$(cat "/etc/slowdns/server.pub")
-nsdomain="ns.${domain}"
+
+# Check if PUBKEY exists, if not set placeholder
+if [ -f "/etc/slowdns/server.pub" ]; then
+    PUBKEY=$(cat "/etc/slowdns/server.pub" 2>/dev/null | tr -d '[:space:]')
+else
+    PUBKEY="Not Configured"
+fi
+
+# Set NS domain
+if [[ "$domain" != "None" && "$domain" != "" ]]; then
+    nsdomain="ns.${domain}"
+else
+    nsdomain="Not Set"
+fi
 
 # Banner
 echo "=========================================="
@@ -52,8 +64,11 @@ while true; do
     break
 done
 
-read -p " Enter Password : " Pass
+# Hide password input
+read -s -p " Enter Password : " Pass
+echo ""
 read -p " Active Duration (Days): " masaaktif
+echo ""
 
 # Validation fallbacks for active duration integers
 if ! [[ "$masaaktif" =~ ^[0-9]+$ ]]; then
@@ -63,7 +78,12 @@ fi
 # Create System User
 useradd -e "$(date -d "$masaaktif days" +"%Y-%m-%d")" -s /bin/false -M "$Login"
 echo -e "$Pass\n$Pass" | passwd "$Login" &> /dev/null
-exp="$(chage -l "$Login" | grep "Account expires" | awk -F": " '{print $2}')"
+exp="$(chage -l "$Login" 2>/dev/null | grep "Account expires" | awk -F": " '{print $2}')"
+
+# If exp is empty, set fallback
+if [ -z "$exp" ]; then
+    exp="$(date -d "$masaaktif days" +"%b %d, %Y")"
+fi
 
 clear
 
@@ -78,8 +98,10 @@ echo "Expired On      : $exp ($masaaktif Days)"
 echo "------------------------------------------"
 echo "IP Address      : $IP"
 echo "Host/Domain     : $domen"
-echo "NS              : $nsdomain"
-echo "PUBKEY          : $PUBKEY"
+if [ -n "$PUBKEY" ] && [ "$PUBKEY" != "Not Configured" ]; then
+    echo "PUBKEY          : $PUBKEY"
+    echo "NS              : $nsdomain"
+fi
 echo "OpenSSH         : $opensh"
 echo "SSH WS          : $portsshws"
 echo "SSH SSL WS      : $IP:$wsssl"
