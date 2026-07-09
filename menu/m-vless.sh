@@ -1,34 +1,36 @@
 #!/bin/bash
-MYIP=$(wget -qO- ipv4.icanhazip.com);
-echo "Checking VPS"
+MYIP=$(wget -qO- ipv4.icanhazip.com)
+echo "Checking VPS..."
 clear
-echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "\E[0;100;33m       • VLESS MENU •         \E[0m"
-echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e ""
-echo -e " [\e[36m•1\e[0m] Create Account Vless "
-echo -e " [\e[36m•2\e[0m] Trial Account Vless "
-echo -e " [\e[36m•3\e[0m] Extending Account Vless "
-echo -e " [\e[36m•4\e[0m] Delete Account Vless "
-echo -e " [\e[36m•5\e[0m] Check User Login Vless "
-echo -e " [\e[36m•6\e[0m] User list created Account "
-echo -e ""
-echo -e " [\e[31m•0\e[0m] \e[31mBACK TO MENU\033[0m"
-echo -e ""
-echo -e   "Press x or [ Ctrl+C ] • To-Exit"
+
+echo "=========================================="
+echo "          VLESS MENU                      "
+echo "=========================================="
 echo ""
-echo -e "\e[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e ""
-read -p " Select menu :  "  opt
-echo -e ""
+echo "[1] Create Account Vless"
+echo "[2] Trial Account Vless"
+echo "[3] Extending Account Vless"
+echo "[4] Delete Account Vless"
+echo "[5] Check User Login Vless"
+echo "[6] User List Created Account"
+echo ""
+echo "[0] Back to Menu"
+echo ""
+echo "Press x or Ctrl+C to Exit"
+echo ""
+echo "=========================================="
+echo ""
+
+read -p "Select menu: " opt
+
 case $opt in
-1) clear ; add-vless ; exit ;;
-2) clear ; trialvless ; exit ;;
-3) clear ; renew-vless ; exit ;;
-4) clear ; del-vless ; exit ;;
-5) clear ; cek-vless ; exit ;;
-6) clear ; cat /etc/log-create-vless.log ; exit ;;
-0) clear ; menu ; exit ;;
-x) exit ;;
-*) echo "Anda salah tekan " ; sleep 1 ; m-sshovpn ;;
+1) clear; add-vless ;;
+2) clear; trialvless ;;
+3) clear; renew-vless ;;
+4) clear; del-vless ;;
+5) clear; cek-vless ;;
+6) clear; cat /etc/log-create-vless.log ;;
+0) clear; menu ;;
+x|X) exit ;;
+*) echo -e "\nInvalid selection!"; sleep 1; m-sshovpn ;;
 esac

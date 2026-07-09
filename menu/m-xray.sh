@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# MARCSCRIPT XRAY ALL PROTOCOLS MENU
+# SIMPLE XRAY ALL PROTOCOLS MENU
 # ============================================================
 
 MYIP=$(wget -qO- ipv4.icanhazip.com)
@@ -8,135 +8,74 @@ echo "Checking VPS..."
 clear
 
 # ---------- COLOURS ----------
-purple='\033[0;35m'
-blue='\033[0;34m'
 green='\033[0;32m'
-cyan='\033[1;36m'
 yellow='\033[1;33m'
 red='\033[1;31m'
-white='\033[1;37m'
 NC='\033[0m'
 
 # ============================================================
 # XRAY MENU INTERFACE
 # ============================================================
-echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${purple}║${white}     █████╗ ██╗  ██╗██████╗  █████╗ ██╗   ██╗${purple}║${NC}"
-echo -e "${purple}║${white}    ██╔══██╗╚██╗██╔╝██╔══██╗██╔══██╗╚██╗ ██╔╝${purple}║${NC}"
-echo -e "${purple}║${white}    ███████║ ╚███╔╝ ██████╔╝███████║ ╚████╔╝ ${purple}║${NC}"
-echo -e "${purple}║${white}    ██╔══██║ ██╔██╗ ██╔══██╗██╔══██║  ╚██╔╝  ${purple}║${NC}"
-echo -e "${purple}║${white}    ██║  ██║██╔╝ ██╗██║  ██║██║  ██║   ██║   ${purple}║${NC}"
-echo -e "${purple}║${white}    ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ${purple}║${NC}"
-echo -e "${purple}║${cyan}              • XRAY ALL PROTOCOLS MENU •                  ${purple}║${NC}"
-echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
-echo ""
+echo "=========================================="
+echo "         XRAY ALL PROTOCOLS MENU          "
+echo "=========================================="
 
 # Display Xray status
 if systemctl is-active --quiet xray 2>/dev/null || systemctl is-active --quiet v2ray 2>/dev/null; then
-    echo -e " ${green}● Xray Service: Running${NC}"
+    echo -e "\n Xray Status: ${green}ON${NC}"
 else
-    echo -e " ${red}● Xray Service: Stopped${NC}"
+    echo -e "\n Xray Status: ${red}OFF${NC}"
 fi
-echo ""
 
 # Menu Options
-echo -e " ${cyan}┌─────────────────────────────────────────────────────────────┐${NC}"
-echo -e " ${cyan}│${white}  [1] VMESS (WebSocket) Management                      ${cyan}│${NC}"
-echo -e " ${cyan}│${white}  [2] VLESS Management                                  ${cyan}│${NC}"
-echo -e " ${cyan}│${white}  [3] TROJAN Management                                 ${cyan}│${NC}"
-echo -e " ${cyan}│${white}  [4] SHADOWSOCKS (SS+WS) Management                   ${cyan}│${NC}"
-echo -e " ${cyan}│${white}  [5] Xray Certificate Management                      ${cyan}│${NC}"
-echo -e " ${cyan}│${white}  [6] Xray Service Control (Start/Stop/Restart)        ${cyan}│${NC}"
-echo -e " ${cyan}│${white}  [0] Back to Main Menu                                ${cyan}│${NC}"
-echo -e " ${cyan}└─────────────────────────────────────────────────────────────┘${NC}"
+echo -e "\n[1] VMESS Management"
+echo "[2] VLESS Management"
+echo "[3] TROJAN Management"
+echo "[4] SHADOWSOCKS Management"
+echo "[5] Certificate Management"
+echo "[6] Service Control"
+echo "[0] Back to Main"
 echo ""
 
-read -p " Select menu [0-6]: " opt
-echo ""
+read -p "Select [0-6]: " opt
 
 case $opt in
-1|01) 
-    clear 
-    m-vmess 
-    ;;
-2|02) 
-    clear 
-    m-vless 
-    ;;
-3|03) 
-    clear 
-    m-trojan 
-    ;;
-4|04) 
-    clear 
-    m-ssws 
-    ;;
-5|05) 
-    clear 
-    certv2ray 
-    ;;
-6|06) 
-    clear
-    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${cyan}              🔄 XRAY SERVICE CONTROL                         ${NC}"
-    echo -e "${purple}══════════════════════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e " [${cyan}1${NC}] Start Xray"
-    echo -e " [${cyan}2${NC}] Stop Xray"
-    echo -e " [${cyan}3${NC}] Restart Xray"
-    echo -e " [${cyan}4${NC}] Check Xray Status"
-    echo -e " [${cyan}0${NC}] Back"
-    echo ""
-    read -p " Select option [0-4]: " xray_opt
-    case $xray_opt in
-        1) 
-            systemctl start xray 2>/dev/null || systemctl start v2ray 2>/dev/null
-            echo -e "${green}✓ Xray started${NC}"
-            sleep 2
-            clear
-            m-xray
-            ;;
-        2) 
-            systemctl stop xray 2>/dev/null || systemctl stop v2ray 2>/dev/null
-            echo -e "${yellow}✓ Xray stopped${NC}"
-            sleep 2
-            clear
-            m-xray
-            ;;
-        3) 
-            systemctl restart xray 2>/dev/null || systemctl restart v2ray 2>/dev/null
-            echo -e "${green}✓ Xray restarted${NC}"
-            sleep 2
-            clear
-            m-xray
-            ;;
-        4) 
-            systemctl status xray 2>/dev/null || systemctl status v2ray 2>/dev/null
-            echo ""
-            read -n 1 -s -r -p "Press any key to continue..."
-            clear
-            m-xray
-            ;;
-        0) 
-            clear 
-            m-xray 
-            ;;
-        *) 
-            echo -e "${red}Invalid option${NC}"
-            sleep 1
-            clear
-            m-xray
-            ;;
-    esac
-    ;;
-0|00) 
-    clear 
-    menu 
-    ;;
-*) 
-    echo -e "${red}✗ Error: Invalid selection!${NC}" 
-    sleep 1 
-    clear 
-    m-xray 
-    ;;
+1) clear; m-vmess ;;
+2) clear; m-vless ;;
+3) clear; m-trojan ;;
+4) clear; m-ssws ;;
+5) clear; certv2ray ;;
+6) clear; service_menu ;;
+0) clear; menu ;;
+*) echo -e "\n${red}Invalid selection!${NC}"; sleep 1; clear; m-xray ;;
 esac
+
+# ============================================================
+# SERVICE CONTROL SUBMENU
+# ============================================================
+service_menu() {
+    echo "=========================================="
+    echo "         SERVICE CONTROL                  "
+    echo "=========================================="
+    echo -e "\n[1] Start Xray"
+    echo "[2] Stop Xray"
+    echo "[3] Restart Xray"
+    echo "[4] Check Status"
+    echo "[0] Back"
+    echo ""
+    
+    read -p "Select [0-4]: " opt
+    case $opt in
+        1) systemctl start xray 2>/dev/null || systemctl start v2ray 2>/dev/null
+           echo -e "\n${green}Xray Started${NC}"; sleep 1; clear; m-xray ;;
+        2) systemctl stop xray 2>/dev/null || systemctl stop v2ray 2>/dev/null
+           echo -e "\n${yellow}Xray Stopped${NC}"; sleep 1; clear; m-xray ;;
+        3) systemctl restart xray 2>/dev/null || systemctl restart v2ray 2>/dev/null
+           echo -e "\n${green}Xray Restarted${NC}"; sleep 1; clear; m-xray ;;
+        4) systemctl status xray 2>/dev/null || systemctl status v2ray 2>/dev/null
+           read -n 1 -s -r -p "\nPress any key to continue..."
+           clear; m-xray ;;
+        0) clear; m-xray ;;
+        *) echo -e "\n${red}Invalid option${NC}"; sleep 1; clear; service_menu ;;
+    esac
+}

@@ -149,7 +149,19 @@ touch /var/log/xray/access.log /var/log/xray/error.log /var/log/xray/access2.log
 chown www-data.www-data /var/log/xray/*.log 2>/dev/null || true
 
 # Install Xray binary
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data
+#bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u www-data
+#check_success "Xray installation"
+echo "[ INFO ] Downloading Xray installer..."
+
+curl -fsSL \
+https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh \
+-o /tmp/install-release.sh || {
+    echo "[ ERROR ] Failed to download Xray installer."
+    exit 1
+}
+
+chmod +x /tmp/install-release.sh
+bash /tmp/install-release.sh install -u www-data
 check_success "Xray installation"
 
 # Verify binary exists, if not force reinstall

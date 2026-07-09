@@ -70,9 +70,8 @@ clear && menu
 
 - PRIVATE INSTALL
 ````bash
+echo "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" > token
 GITHUB_TOKEN=$(cat /root/token 2>/dev/null)
-
-# Install with token from file
 apt update && \
 apt install -y bzip2 gzip coreutils screen curl unzip && \
 curl -sS -H "Authorization: Bearer $GITHUB_TOKEN" \
@@ -82,7 +81,7 @@ curl -sS -H "Authorization: Bearer $GITHUB_TOKEN" \
 chmod +x setup.sh && \
 sed -i 's/\r$//' setup.sh && \
 screen -S setup ./setup.sh && \
-clear && menu
+clear && rm token
 ````
 ---
 

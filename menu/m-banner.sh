@@ -20,7 +20,7 @@ while true; do
     echo -e "${CYAN}════════════════════════════════════════════════════${NC}"
     echo ""
     echo -e " ${GREEN}1${NC} : Edit Banner"
-    echo -e " ${GREEN}2${NC} : Replace Banner"
+    echo -e " ${GREEN}2${NC} : Replace Banner (Recommend)"
     echo -e " ${GREEN}3${NC} : Restart SSH"
     echo -e " ${GREEN}4${NC} : Exit"
     echo ""

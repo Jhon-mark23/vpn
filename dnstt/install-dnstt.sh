@@ -90,13 +90,13 @@ get_domain() {
     NS_DOMAIN="${SUB}.${DOMAIN}"
     
     # Save to files
-    echo "$DOMAIN" > /etc/dnstt/main-domain 2>/dev/null || echo "$DOMAIN" > /root/domain.txt
+    echo "$DOMAIN" > /root/domain 2>/dev/null || echo "$DOMAIN" > /root/domain.txt
     echo "$NS_DOMAIN" > /root/nsdomain
     echo "$NS_DOMAIN" > /root/nsdomain.txt
     
     # Get server IP
     SERVER_IP=$(curl -s ifconfig.me || curl -s icanhazip.com || hostname -I | awk '{print $1}')
-    echo "$SERVER_IP" > /etc/dnstt/server-ip 2>/dev/null
+    echo "$SERVER_IP" > /root/server-ip 2>/dev/null
     
     print_info "Main Domain: ${CYAN}${DOMAIN}${NC}"
     print_info "NS Domain: ${CYAN}${NS_DOMAIN}${NC}"
@@ -354,10 +354,10 @@ create_service() {
     fi
     
     # Ask for NS Point (forwarding target)
-    echo ""
-    print_info "Configure forwarding target"
-    read -rp "Forward to (IP:Port) [127.0.0.1:22]: " NS_POINT
-    NS_POINT="${NS_POINT:-127.0.0.1:22}"
+   # echo ""
+    #print_info "Configure forwarding target"
+   # read -rp "Forward to (IP:Port) [127.0.0.1:22]: " NS_POINT
+    NS_POINT="127.0.0.1:22"
     
     SERVICE_FILE="/etc/systemd/system/dnstt.service"
     

@@ -112,7 +112,7 @@ LISTENING_PORT = 8080
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = '127.0.0.1:22'
-RESPONSE = 'HTTP/1.1 101 <font color="green">SP MARCSCRIPT</font>\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nServer: MarcScript-WS\r\n\r\n'
+RESPONSE = 'HTTP/1.1 101 <font color="green">MARCSCRIPT</font>\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nServer: MarcScript-WS\r\n\r\n'
 
 class Server(threading.Thread):
     def __init__(self, host, port):
@@ -331,7 +331,7 @@ LISTENING_PORT = 9445
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = '127.0.0.1:22'
-RESPONSE = 'HTTP/1.1 101 <font color="green">SP MARCSCRIPT</font>\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nServer: MarcScript-WS\r\n\r\n'
+RESPONSE = 'HTTP/1.1 101 <font color="green">MARCSCRIPT</font>\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nServer: MarcScript-WS\r\n\r\n'
 
 class Server(threading.Thread):
     def __init__(self, host, port):
@@ -549,7 +549,7 @@ LISTENING_PORT = 9443
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = '127.0.0.1:22'
-RESPONSE = 'HTTP/1.1 101 <font color="green">SP MARCSCRIPT</font>\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nServer: MarcScript-WSS\r\n\r\n'
+RESPONSE = 'HTTP/1.1 101 <font color="green">MARCSCRIPT</font>\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nServer: MarcScript-WSS\r\n\r\n'
 
 # SSL Certificate paths
 CERT_FILE = '/etc/stunnel/stunnel.pem'

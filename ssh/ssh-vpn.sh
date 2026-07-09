@@ -156,7 +156,7 @@ EOF
     # Banner
     cat > /etc/ssh/ssh_banner <<'BEOF'
 <p style="text-align:center;">
-<span style="color:#00E5FF;"><big><b>🚀 MARCSCRIPT SSH XRAY VPN 🚀</b></big></span>
+<span style="color:#00E5FF;"><big><b>🚀 MARCSCRIPT VPN 🚀</b></big></span>
 </p>
 
 <p style="text-align:center;">
@@ -192,6 +192,11 @@ EOF
 <p style="text-align:center;">
 <span style="color:#FFFFFF;">🔐 SSH + WS + SSL</span><br>
 <span style="color:#00BCD4;">Port : 8445</span>
+</p>
+
+<p style="text-align:center;">
+<span style="color:#FFFFFF;">🔐 SSH DNSTT</span><br>
+<span style="color:#00E5FF;">Port : 22 or Any</span><br>
 </p>
 
 <p style="text-align:center;">
@@ -397,9 +402,15 @@ download_scripts() {
     dl() { download_private "$2" "$1" && chmod +x "$1" && sed -i 's/\r$//' "$1"; }
     
     dl menu        "menu/menu.sh"
+    dl m-domain    "menu/m-domain.sh"
     dl m-sshovpn   "menu/m-sshovpn.sh"
     dl m-xray      "menu/m-xray.sh"
     dl m-system    "menu/m-system.sh"
+    dl m-vless     "menu/m-vless.sh"
+    dl m-vmess     "menu/m-vmess.sh"
+    dl m-ssws      "menu/m-ssws.sh"
+    dl m-trojan    "menu/m-trojan.sh"
+    dl update      "menu/update.sh"
     dl running     "menu/running.sh"
     dl clearcache  "menu/clearcache.sh"
     dl m-banner    "menu/m-banner.sh"
@@ -415,6 +426,9 @@ download_scripts() {
     dl ceklim   "ssh/ceklim.sh"
     dl tendang  "ssh/tendang.sh"
     dl set-api  "api/setup-api.sh"
+    dl speedtest "ssh/speedtest_cli.py"
+    dl auto-reboot "menu/auto-reboot"
+    dl bw         "menu/bw.sh"
     
     cd /
     print_ok "Scripts downloaded"

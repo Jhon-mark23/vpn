@@ -21,7 +21,7 @@ opensh="22"
 portsshws="8080"
 wsssl="8445"
 ssl="8443"
-PUBKEY=$(cat "/etc/slowdns/server.pub" 2>/dev/null || echo "N/A")
+PUBKEY=$(cat "/etc/dnstt/private.pub" 2>/dev/null || echo "N/A")
 nsdomain="ns.${domen}"
 
 if id "$LOGIN" &>/dev/null; then
@@ -53,6 +53,7 @@ if id "$LOGIN" &>/dev/null; then
         "ssh_ws": "$portsshws",
         "ssh_ssl_ws": "$wsssl",
         "ssl_tls": "$ssl",
+        "dnstt": "22",
         "udpgw": "7100-7400"
     },
     "http_custom": "${IP}:22@${LOGIN}:${PASS}",

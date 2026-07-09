@@ -6,13 +6,9 @@
 clear
 
 # ---------- COLOURS ----------
-purple='\033[0;35m'
-blue='\033[0;34m'
-green='\033[0;32m'
-cyan='\033[1;36m'
-yellow='\033[1;33m'
-red='\033[1;31m'
-white='\033[1;37m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[1;31m'
 NC='\033[0m'
 
 # Fetch Active Configuration Domain
@@ -34,28 +30,23 @@ wsssl="8445"
 ssl="8443"
 PUBKEY=$(cat "/etc/slowdns/server.pub")
 nsdomain="ns.${domain}"
-# Banner Implementation
-echo -e "${purple}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${purple}║${white}     ███╗   ███╗ █████╗ ██████╗  ██████╗███████╗${purple}║${NC}"
-echo -e "${purple}║${white}     ████╗ ████║██╔══██╗██╔══██╗██╔════╝██╔════╝${purple}║${NC}"
-echo -e "${purple}║${white}     ██╔████╔██║███████║██████╔╝██║     ███████╗${purple}║${NC}"
-echo -e "${purple}║${white}     ██║╚██╔╝██║██╔══██║██╔══██╗██║     ╚════██║${purple}║${NC}"
-echo -e "${purple}║${white}     ██║ ╚═╝ ██║██║  ██║██║  ██║╚██████╗███████║${purple}║${NC}"
-echo -e "${purple}║${white}     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝${purple}║${NC}"
-echo -e "${purple}║${cyan}                     • CREATE SSH VPN ACCOUNT •                ${purple}║${NC}"
-echo -e "${purple}╚══════════════════════════════════════════════════════════════╝${NC}"
+
+# Banner
+echo "=========================================="
+echo "          CREATE SSH VPN ACCOUNT           "
+echo "=========================================="
 echo ""
 
-# Username Intake and Validation Check
+# Username Intake and Validation
 while true; do
     read -p " Enter Username : " Login
     Login="${Login//[[:space:]]/}"
     if [ -z "$Login" ]; then
-        echo -e "${red}✗ Error: Username cannot be blank!${NC}"
+        echo -e "${RED}Error: Username cannot be blank!${NC}"
         continue
     fi
     if id "$Login" &>/dev/null; then
-        echo -e "${red}✗ Error: User '$Login' already exists! Choose another name.${NC}"
+        echo -e "${RED}Error: User '$Login' already exists! Choose another name.${NC}"
         continue
     fi
     break
@@ -69,7 +60,7 @@ if ! [[ "$masaaktif" =~ ^[0-9]+$ ]]; then
     masaaktif=30
 fi
 
-# Create System User Explicitly Non-Shell
+# Create System User
 useradd -e "$(date -d "$masaaktif days" +"%Y-%m-%d")" -s /bin/false -M "$Login"
 echo -e "$Pass\n$Pass" | passwd "$Login" &> /dev/null
 exp="$(chage -l "$Login" | grep "Account expires" | awk -F": " '{print $2}')"
@@ -78,35 +69,36 @@ clear
 
 # Output Generation Block
 {
-echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${cyan}                    📡 SSH VPN ACCOUNT DETAIL                 ${NC}"
-echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e " Username    : ${green}$Login${NC}"
-echo -e " Password    : ${green}$Pass${NC}"
-echo -e " Expired On  : ${yellow}$exp ($masaaktif Days)${NC}"
-echo -e "${purple}──────────────────────────────────────────────────────────────${NC}"
-echo -e " IP Address  : $IP"
-echo -e " Host/Domain : $domen"
-echo -e " NS : $nsdomain"
-echo -e " PUBKEY : $PUBKEY"
-echo -e " OpenSSH     : $opensh"
-echo -e " SSH WS      : $portsshws"
-echo -e " SSH SSL WS  : $IP:$wsssl"
-echo -e " SSL/TLS     : $ssl"
-echo -e " UDPGW Port  : 7100-7400"
-echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${yellow}⚙️ HTTP CUSTOM / HTTP INJECTOR WEBSOCKET PAYLOADS${NC}"
-echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${cyan}■ Http Cutom"
-echo -e "${IP}:22@${Login}:${Pass}"
-echo -e "${cyan}■ Change the port if you want o connect other protocol"
-echo -e ""
-echo -e "${cyan}■ TLS / WSS Payload:${NC}"
-echo -e "GET wss://[host]/ HTTP/1.1[crlf]Host: ${domen}[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]"
-echo -e ""
-echo -e "${cyan}■ Direct / WS Payload:${NC}"
-echo -e "GET / HTTP/1.1[crlf]Host: ${domen}[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]"
-echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo "=========================================="
+echo "          SSH VPN ACCOUNT DETAIL          "
+echo "=========================================="
+echo "Username        : $Login"
+echo "Password        : $Pass"
+echo "Expired On      : $exp ($masaaktif Days)"
+echo "------------------------------------------"
+echo "IP Address      : $IP"
+echo "Host/Domain     : $domen"
+echo "NS              : $nsdomain"
+echo "PUBKEY          : $PUBKEY"
+echo "OpenSSH         : $opensh"
+echo "SSH WS          : $portsshws"
+echo "SSH SSL WS      : $IP:$wsssl"
+echo "SSL/TLS         : $ssl"
+echo "UDPGW Port      : 7100-7400"
+echo "=========================================="
+echo "HTTP CUSTOM / HTTP INJECTOR PAYLOADS"
+echo "=========================================="
+echo "Http Custom:"
+echo "$IP:22@$Login:$Pass"
+echo ""
+echo "Change the port if you want to connect other protocol"
+echo ""
+echo "TLS / WSS Payload:"
+echo "GET wss://[host]/ HTTP/1.1[crlf]Host: $domen[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]"
+echo ""
+echo "Direct / WS Payload:"
+echo "GET / HTTP/1.1[crlf]Host: $domen[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]"
+echo "=========================================="
 } | tee -a /etc/log-create-ssh.log
 
 echo ""
