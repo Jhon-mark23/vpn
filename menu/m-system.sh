@@ -25,6 +25,7 @@ echo "[5] Check Bandwidth"
 echo "[6] Install TCP BBR"
 echo "[7] DNS Changer"
 echo "[8] Edit Script Banner"
+echo "[9] Add API"
 echo ""
 echo "[0] Back to Main Menu"
 echo ""
@@ -44,6 +45,7 @@ case $opt in
 6|06) clear; m-tcp ;;
 7|07) clear; m-dns ;;
 8|08) clear; m-banner ;;
+9|09) clear; set-api  ;;
 0|00) clear; menu ;;
 x|X) exit ;;
 *) echo -e "\n${red}Invalid selection!${NC}"; sleep 1; exec bash "$0" ;;
