@@ -35,7 +35,7 @@ uptime_info=$(uptime -p 2>/dev/null | cut -d' ' -f2-)
 tram=$(free -m 2>/dev/null | awk 'NR==2{print $2}')
 uram=$(free -m 2>/dev/null | awk 'NR==2{print $3}')
 Exp2="Lifetime"
-
+renter="MarcScript"
 # Get service status
 SSH_STATUS=$(status_icon ssh)
 XRAY_STATUS=$(status_icon xray)
@@ -75,7 +75,7 @@ echo ""
 
 # ---------- FOOTER ----------
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "  ${cyan}Version:${NC} ${white}${sver}${NC} | ${cyan}Client:${NC} ${white}MarcScript${NC} | ${cyan}Expiry:${NC} ${green}${Exp2}${NC}"
+echo -e "  ${cyan}Version:${NC} ${white}${sver}${NC} | ${cyan}Client:${NC} ${white}${renter}${NC} | ${cyan}Expiry:${NC} ${green}${Exp2}${NC}"
 echo -e "${purple}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
