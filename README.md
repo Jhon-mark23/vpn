@@ -16,7 +16,7 @@
 
 ### ⚡ One Command Installation • SSH • XRAY • WEBSOCKET • SSL • GRPC
 
-Created with ❤️ by **Marc**
+Remod with ❤️ by **Marc**
 
 </div>
 
